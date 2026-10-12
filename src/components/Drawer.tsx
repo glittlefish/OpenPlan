@@ -6,7 +6,7 @@ import Icon from './Icon';
 import type { Project, Resource, Row, Task } from '../types';
 
 const U = OP.util, M = OP.model;
-const VIEWS = ['gantt', 'wbs'];
+const VIEWS = ['gantt'];
 
 function Stat({ v, k }: { v: React.ReactNode; k: string }) { return <div className="stat"><b>{v}</b><span>{k}</span></div>; }
 const varDays = (v: number) => (v > 0 ? '+' : '') + U.num(v) + 'd';

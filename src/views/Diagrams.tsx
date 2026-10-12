@@ -113,7 +113,7 @@ export function WbsView() {
         <div className="seg">{levels.map(l => <button key={l} className={Math.min(st.wbsDepth, maxLv) === l ? 'on' : ''} onClick={() => st.setUI({ wbsDepth: l })}>{l}</button>)}</div>
         <span className="spacer" /><ZoomTools />
       </div>
-      {svg ? <Canvas svg={svg} nodeClass="wnode" /> : <Empty title="No work items yet" text="Build your task outline in the Gantt view; indented tasks become WBS levels." />}
+      {svg ? <Canvas svg={svg} nodeClass="wnode" openMode="dialog" /> : <Empty title="No work items yet" text="Build your task outline in the Gantt view; indented tasks become WBS levels." />}
     </div>
   );
 }
