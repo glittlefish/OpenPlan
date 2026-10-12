@@ -185,6 +185,10 @@ img.logo { object-fit: contain; }
 .menu hr { border: 0; border-top: 1px solid var(--border); margin: 2px 0; }
 .menu .label { padding: 5px 10px 2px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .menu-note { padding: 6px 10px; font-size: var(--fs-xs); color: var(--text-muted); max-width: 280px; }
+.ctx-menu { position: fixed; }
+.ctx-backdrop { position: fixed; inset: 0; z-index: 55; }
+.wnode.drop-target rect { stroke: var(--accent); stroke-width: 2; }
+.wnode.dragging { opacity: 0.45; }
 .cols-menu, #colMenu { min-width: 340px; max-height: 70vh; overflow: auto; }
 .col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 6px; padding: 2px 6px 4px; }
 .chk { display: flex; align-items: center; gap: 6px; padding: 3px 4px; cursor: pointer; font-size: var(--fs-base); }

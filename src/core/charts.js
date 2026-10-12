@@ -16,7 +16,7 @@ OP.charts = (function () {
     '.node{fill:var(--surface);stroke:var(--border-strong);stroke-width:1.25}.node.c{stroke:var(--critical);stroke-width:2}' +
     '.nh{fill:var(--surface-2)}.nh.c{fill:var(--critical-soft)}.cap{fill:var(--accent)}' +
     '.wbs0{fill:var(--accent);stroke:none}.wbs0t{fill:#fff;font-weight:600}.wbs1{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.25}' +
-    '.wbs2{fill:var(--surface);stroke:var(--border-strong);stroke-width:1}.con{stroke:var(--border-strong);fill:none;stroke-width:1.25}' +
+    '.wbs2{fill:var(--surface);stroke:var(--border-strong);stroke-width:1}.wbs1.sel,.wbs2.sel{stroke:var(--accent);stroke-width:2}.con{stroke:var(--border-strong);fill:none;stroke-width:1.25}' +
     '.t-Manager{fill:var(--c1)}.t-Full-time{fill:var(--c2)}.t-Part-time{fill:var(--c3)}.t-Supporter{fill:var(--c4)}' +
     '.cbar{fill:var(--bar)}.cline{stroke:var(--bar);stroke-width:2;fill:none}.bud{stroke:var(--critical);stroke-width:1.5;stroke-dasharray:6 4}' +
     '.hit{fill:transparent}.hit:hover{fill:var(--accent);fill-opacity:.12}.grp{fill:var(--surface-3)}.bl{fill:var(--baseline)}.bar.late{fill:var(--warn)}' +
@@ -389,7 +389,7 @@ OP.charts = (function () {
 
     function box(x, y, w, r, cls) {
       var maxc = Math.floor((w - 16) / 6.6), lines = wrap(r.task.name, maxc, 2), out = [];
-      out.push('<g class="wnode" data-uid="' + esc(r.task.uid) + '" tabindex="0" role="button" aria-label="' + esc(r.wbs + ' ' + r.task.name) + '"><rect class="' + cls + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + NH + '"/>');
+      out.push('<g class="wnode" data-uid="' + esc(r.task.uid) + '" tabindex="0" role="button" aria-label="' + esc(r.wbs + ' ' + r.task.name) + '"><rect class="' + cls + (o.selected && o.selected[r.task.uid] ? ' sel' : '') + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + NH + '"/>');
       out.push('<text class="m sm" x="' + (x + 8) + '" y="' + (y + 15) + '">' + esc(r.wbs) + (r.milestone ? '  ◆' : '') + '</text>');
       out.push('<text class="' + (r.summary ? 'b ' : '') + 'sm" x="' + (x + 8) + '" y="' + (y + (lines[1] ? 28 : 32)) + '">' + esc(lines[0]) + '</text>');
       if (lines[1]) out.push('<text class="' + (r.summary ? 'b ' : '') + 'sm" x="' + (x + 8) + '" y="' + (y + 40) + '">' + esc(lines[1]) + '</text>');

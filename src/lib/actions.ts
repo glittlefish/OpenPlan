@@ -62,7 +62,7 @@ export function scopeRows(st: Store) {
 }
 
 // SVG markup for the current view (null when the view is not a picture).
-export function viewSvgString(st: Store): string | null {
+export function viewSvgString(st: Store, opts?: { selected?: boolean }): string | null {
   if (st.view === 'gantt') {
     return C.gantt({ p: st.p, s: st.s, rows: gridItems(st), zoom: st.zoom, critical: st.critical, table: true, flat: st.group !== 'none', baseline: st.showBaseline && !!st.p.baseline }).svg;
   }
@@ -72,7 +72,7 @@ export function viewSvgString(st: Store): string | null {
     const title = sr ? sr.wbs + ' ' + sr.task.name : st.p.name + ' — activity network';
     return C.network({ p: st.p, s: st.s, rows: scopeRows(st), critical: st.critical, dates: st.netDates, title }).svg;
   }
-  if (st.view === 'wbs') return C.wbs({ p: st.p, s: st.s, depth: st.wbsDepth }).svg;
+  if (st.view === 'wbs') return C.wbs({ p: st.p, s: st.s, depth: st.wbsDepth, selected: opts?.selected ? Object.fromEntries(st.sel.map((u: number) => [u, true])) : null }).svg;
   if (st.view === 'org') {
     const people = st.p.resources.filter(r => r.kind === 'Work');
     return people.length ? C.org({ p: { resources: people, currency: st.p.currency } }).svg : null;

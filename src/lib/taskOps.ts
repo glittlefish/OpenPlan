@@ -131,6 +131,51 @@ export function addTaskNamed(name: string) {
   st.select([uid], uid);
 }
 
+// Insert a new task relative to a reference task, staying in the current view (WBS).
+// where: 'before'/'after' = sibling of the reference, 'child' = subtask of the reference.
+// refUid null = append at the end, at the last task's level.
+export function addTaskNear(refUid: number | null, where: 'before' | 'after' | 'child') {
+  const st = S(), p = st.p;
+  let pos: number, lvl: number;
+  if (refUid == null) {
+    pos = p.tasks.length;
+    lvl = pos ? p.tasks[pos - 1].level : 1;
+  } else {
+    const i = M.indexByUid(p)[refUid];
+    if (i == null) return;
+    const ref = p.tasks[i];
+    if (where === 'child') { pos = i + 1; lvl = ref.level + 1; }
+    else if (where === 'before') { pos = i; lvl = ref.level; }
+    else { pos = M.subtreeEnd(p, i); lvl = ref.level; }
+  }
+  let uid = 0;
+  st.commit(pp => {
+    const t = M.newTask(pp, { name: 'New task', level: lvl, duration: 1 });
+    uid = t.uid;
+    pp.tasks.splice(pos, 0, t);
+  });
+  st.select([uid], uid);
+}
+
+// Move a task with its whole subtree to become the sibling right after the target task.
+// Levels shift so the moved block keeps its internal outline shape.
+export function moveSubtreeTo(uid: number, targetUid: number): boolean {
+  const st = S(), p = st.p, idx = M.indexByUid(p);
+  const i = idx[uid], ti = idx[targetUid];
+  if (i == null || ti == null || uid === targetUid) return false;
+  if (ti > i && ti < M.subtreeEnd(p, i)) { st.toast('A task cannot be moved into its own subtree.', true); return false; }
+  st.commit(pp => {
+    const a = M.indexByUid(pp)[uid], e = M.subtreeEnd(pp, a);
+    const block = pp.tasks.splice(a, e - a);
+    const t = M.indexByUid(pp)[targetUid];
+    if (t == null) { pp.tasks.splice(a, 0, ...block); return false; }
+    const shift = pp.tasks[t].level - block[0].level;
+    block.forEach(x => { x.level += shift; });
+    pp.tasks.splice(M.subtreeEnd(pp, t), 0, ...block);
+  });
+  return true;
+}
+
 export function indent(dir: 1 | -1) {
   S().commit(p => {
     selectedBlocks(p).forEach(i => {
