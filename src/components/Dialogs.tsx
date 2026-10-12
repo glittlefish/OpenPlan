@@ -3,13 +3,14 @@ import OP from '../core';
 import { useStore, S } from '../store';
 import * as ops from '../lib/taskOps';
 import Icon from './Icon';
+import { TaskEditor } from './Drawer';
 import type { CustomField, Resource, Row } from '../types';
 import { version } from '../../package.json';
 import { projectFromTable } from '../lib/importTable';
 import { shareUrl } from '../lib/share';
 import { loadProject } from '../lib/actions';
 
-const U = OP.util, M = OP.model;
+const U = OP.util;
 const STATUSES = ['Draft', 'In review', 'Approved', 'Baselined', 'Final'];
 
 function Modal({ title, children, onSubmit, okLabel = 'Save', cancelLabel = 'Cancel', noOk, backdropClose }: {
@@ -289,35 +290,11 @@ function TaskDialog({ uid }: { uid: number }) {
   const t = st.p.tasks.find(x => x.uid === uid);
   const r = t ? st.s.rows.find((x: Row) => x.task.uid === t.uid) : undefined;
   if (!t || !r) return null;
-  const stat = (v: ReactNode, k: string) => <div className="stat" key={k}><b>{v}</b><span>{k}</span></div>;
+  // Edits commit immediately through the store, exactly like the side drawer.
+  // onSubmit returns false so an accidental form submit (Enter) cannot close the dialog.
   return (
-    <Modal title={'Task ' + r.id + ' details'} cancelLabel="Close" noOk backdropClose>
-      <div><b>{t.name || '(unnamed task)'}</b> <span className="muted small">· WBS {r.wbs}{r.summary ? ' · summary task' : ''}{r.milestone ? ' · milestone' : ''}</span></div>
-      {r.conflict && <div className="alert inline"><Icon name="alert" />{r.conflict}.</div>}
-      {r.missedDeadline && <div className="alert inline"><Icon name="deadline" />Finishes {U.fmt(r.finishDn)}, after its deadline.</div>}
-      <div className="stats">
-        {stat(U.fmt(r.startDn), 'Start')}
-        {stat(U.fmt(r.finishDn), 'Finish')}
-        {stat(M.fmtDuration(r.duration), 'Duration')}
-        {stat(U.num(r.slack) + 'd', 'Total slack')}
-        {stat(r.summary ? '—' : U.num(r.freeSlack) + 'd', 'Free slack')}
-        {stat(r.critical ? <span style={{ color: 'var(--critical-edge)' }}>Yes</span> : 'No', 'Critical')}
-        {stat(U.num(r.es) + ' / ' + U.num(r.ef), 'ES / EF (day)')}
-        {stat(U.num(r.ls) + ' / ' + U.num(r.lf), 'LS / LF (day)')}
-        {stat(U.num(r.work) + 'h', 'Work')}
-        {stat(U.money(r.cost), 'Cost')}
-        {stat(U.money(r.actualCost), 'Actual cost')}
-        {stat(r.percent + '%', 'Complete')}
-      </div>
-      <div className="row2">
-        <div className="field"><span>Predecessors</span><div>{M.formatPreds(st.p, t) || <span className="muted">None</span>}</div></div>
-        <div className="field"><span>Resources</span><div>{r.names || <span className="muted">Unassigned</span>}</div></div>
-      </div>
-      <div className="row2">
-        <div className="field"><span>Priority</span><div>{t.priority}</div></div>
-        <div className="field"><span>Constraint</span><div>{M.CONSTRAINTS[t.constraint] || t.constraint}{t.constraintDate ? ' · ' + t.constraintDate : ''}</div></div>
-      </div>
-      {t.notes && <div className="field"><span>Notes</span><div>{t.notes}</div></div>}
+    <Modal title={'Task ' + r.id + ' · WBS ' + r.wbs} cancelLabel="Close" noOk backdropClose onSubmit={() => false}>
+      <TaskEditor st={st} t={t} r={r} />
     </Modal>
   );
 }

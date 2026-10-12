@@ -22,10 +22,19 @@ export default function Drawer() {
   const t = st.sel.length === 1 ? st.p.tasks.find(x => x.uid === st.sel[0]) : null;
   const r = t ? st.s.rows.find((x: Row) => x.task.uid === t.uid) : undefined;
   if (!st.drawer || !t || !r || !VIEWS.includes(st.view)) return null;
-  return <DrawerBody st={st} t={t} r={r} />;
+  return (
+    <aside className="drawer open">
+      <div className="drawer-head">
+        <h2>Task {r.id} <span className="muted small">· WBS {r.wbs}</span></h2>
+        <button className="icon-btn" title="Close panel" aria-label="Close panel" onClick={() => st.setUI({ drawer: false })}><Icon name="x" /></button>
+      </div>
+      <div className="drawer-body"><TaskEditor st={st} t={t} r={r} /></div>
+    </aside>
+  );
 }
 
-function DrawerBody({ st, t, r }: { st: Store; t: Task; r: Row }) {
+// Task editor fields shared by the side drawer (Gantt/WBS) and the task details dialog (Network).
+export function TaskEditor({ st, t, r }: { st: Store; t: Task; r: Row }) {
   const p = st.p, uid = t.uid, leaf = !r.summary, cur = p.currency;
   const edit = (fn: (t: Task, p: Project) => void | false) => st.commit(pp => fn(ops.findTask(pp, uid), pp));
   const set = (key: keyof Task, v: any) => edit(x => { (x as any)[key] = v; });
@@ -64,13 +73,8 @@ function DrawerBody({ st, t, r }: { st: Store; t: Task; r: Row }) {
   };
 
   return (
-    <aside className="drawer open">
-      <div className="drawer-head">
-        <h2>Task {r.id} <span className="muted small">· WBS {r.wbs}</span></h2>
-        <button className="icon-btn" title="Close panel" aria-label="Close panel" onClick={() => st.setUI({ drawer: false })}><Icon name="x" /></button>
-      </div>
-      <div className="drawer-body">
-        <label className="field"><span>Name</span><Field className="inp" fk="d:name" value={t.name} onCommit={v => { set('name', v); }} /></label>
+    <>
+      <label className="field"><span>Name</span><Field className="inp" fk="d:name" value={t.name} onCommit={v => { set('name', v); }} /></label>
         {r.conflict && <div className="alert inline"><Icon name="alert" />{r.conflict}.</div>}
         {r.missedDeadline && <div className="alert inline"><Icon name="deadline" />Finishes {U.fmt(r.finishDn)}, after its deadline.</div>}
 
@@ -232,8 +236,7 @@ function DrawerBody({ st, t, r }: { st: Store; t: Task; r: Row }) {
         <label className="field"><span>Notes</span>
           <textarea className="inp" defaultValue={t.notes} key={uid + ':' + t.notes} onBlur={e => { if (e.target.value !== t.notes) set('notes', e.target.value); }} />
         </label>
-      </div>
-    </aside>
+    </>
   );
 }
 
