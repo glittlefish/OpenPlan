@@ -1,10 +1,11 @@
-import { useLayoutEffect, useMemo, useRef, type JSX, type MouseEvent as RMouseEvent } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type JSX, type MouseEvent as RMouseEvent } from 'react';
 import OP from '../core';
 import { useApp, S, ask, focusKey, rowByUid, type Store } from '../store';
 import { activeCols, colDef, gridItems, menuData, type GroupItem } from '../lib/grid';
 import * as ops from '../lib/taskOps';
 import Field, { DateField } from '../components/Field';
 import Icon from '../components/Icon';
+import ContextMenu, { type CtxItem } from '../components/ContextMenu';
 import type { Row } from '../types';
 
 const U = OP.util, M = OP.model, C = OP.charts;
@@ -186,7 +187,7 @@ function Cell({ st, k, r, idx }: { st: Store; k: string; r: Row; idx: any }) {
     onFocus={focusSel} onCommit={v => commitCell(k, uid, v)} onNav={d => navFrom(uid, k, d)} /></td>;
 }
 
-function Grid({ st, list }: { st: Store; list: (Row | GroupItem)[] }) {
+function Grid({ st, list, onCtx }: { st: Store; list: (Row | GroupItem)[]; onCtx: (uid: number, x: number, y: number) => void }) {
   const ks = activeCols(st), idx = useMemo(() => M.indexByUid(st.p), [st.p]);
   const selSet = new Set(st.sel);
   return (
@@ -205,7 +206,8 @@ function Grid({ st, list }: { st: Store; list: (Row | GroupItem)[] }) {
               </td></tr>
             )
             : (
-              <tr key={item.task.uid} className={(selSet.has(item.task.uid) ? 'sel ' : '') + (item.summary ? 'summary' : '')}>
+              <tr key={item.task.uid} className={(selSet.has(item.task.uid) ? 'sel ' : '') + (item.summary ? 'summary' : '')}
+                onContextMenu={e => { e.preventDefault(); onCtx(item.task.uid, e.clientX, e.clientY); }}>
                 {ks.map(k => <Cell key={k} st={st} k={k} r={item} idx={idx} />)}
               </tr>
             ))}
@@ -331,6 +333,19 @@ export default function GanttView() {
   const md = menuData(st);
   const gridRef = useRef<HTMLDivElement>(null);
   const syncing = useRef(false);
+  const [ctx, setCtx] = useState<{ uid: number; x: number; y: number } | null>(null);
+  // Right-clicking a task row or bar: keep a multi-selection when the task is part of it.
+  const openCtx = (uid: number, x: number, y: number) => {
+    if (!st.sel.includes(uid)) st.select([uid], uid);
+    setCtx({ uid, x, y });
+  };
+  const ctxItems = (uid: number): CtxItem[] => [
+    { label: 'Copy', icon: 'copy', onClick: () => ops.copyTasks(st.sel.includes(uid) ? st.sel : [uid]) },
+    { label: 'Paste', icon: 'paste', disabled: !ops.hasClip(), onClick: () => ops.pasteTasks(uid) },
+    { hr: true },
+    { label: 'Insert task before', icon: 'plus', onClick: () => { const u = ops.addTaskNear(uid, 'before'); if (u) focusKey(u + ':name'); } },
+    { label: 'Insert task after', icon: 'plus', onClick: () => { const u = ops.addTaskNear(uid, 'after'); if (u) focusKey(u + ':name'); } },
+  ];
 
   const g = useMemo(() => C.gantt({
     p: st.p, s: st.s, rows: list, zoom: st.zoom, critical: st.critical, baseline: st.showBaseline && !!st.p.baseline
@@ -408,7 +423,7 @@ export default function GanttView() {
       )}
       <div className="split" data-hide={hide}>
         <div className="grid-pane" ref={gridRef} style={{ width: st.gridW }} onScroll={e => sync(e.currentTarget, chartEl)}>
-          <Grid st={st} list={list} />
+          <Grid st={st} list={list} onCtx={openCtx} />
         </div>
         <div className="splitter" title="Drag to resize, or to either edge to hide a side" onPointerDown={startSplit}>
           <div className="split-btns" onPointerDown={e => e.stopPropagation()}>
@@ -426,6 +441,12 @@ export default function GanttView() {
           onScroll={e => sync(e.currentTarget, gridRef.current)}
           onClick={onChartClick}
           onDoubleClick={e => { if ((e.target as Element).closest('.gbar')) st.setUI({ drawer: true }); }}
+          onContextMenu={e => {
+            const b = (e.target as Element).closest('.gbar') as SVGGElement | null;
+            if (!b) return;
+            e.preventDefault();
+            openCtx(+b.dataset.uid!, e.clientX, e.clientY);
+          }}
           onKeyDown={e => {
             const b = (e.target as Element).closest('.gbar') as SVGGElement | null;
             if (b && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); clickSelect(+b.dataset.uid!, e); st.setUI({ drawer: true }); }
@@ -433,6 +454,7 @@ export default function GanttView() {
           onPointerDown={onChartPointerDown}
           dangerouslySetInnerHTML={{ __html: g.svg + '<div style="height:' + C.ROW * 2 + 'px"></div>' }} />
       </div>
+      {ctx && <ContextMenu x={ctx.x} y={ctx.y} items={ctxItems(ctx.uid)} onClose={() => setCtx(null)} />}
     </div>
   );
 }

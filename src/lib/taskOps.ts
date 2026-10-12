@@ -133,8 +133,8 @@ export function addTaskNamed(name: string) {
 
 // Insert a new task relative to a reference task, staying in the current view (WBS).
 // where: 'before'/'after' = sibling of the reference, 'child' = subtask of the reference.
-// refUid null = append at the end, at the last task's level.
-export function addTaskNear(refUid: number | null, where: 'before' | 'after' | 'child') {
+// refUid null = append at the end, at the last task's level. Returns the new task's uid.
+export function addTaskNear(refUid: number | null, where: 'before' | 'after' | 'child'): number {
   const st = S(), p = st.p;
   let pos: number, lvl: number;
   if (refUid == null) {
@@ -142,7 +142,7 @@ export function addTaskNear(refUid: number | null, where: 'before' | 'after' | '
     lvl = pos ? p.tasks[pos - 1].level : 1;
   } else {
     const i = M.indexByUid(p)[refUid];
-    if (i == null) return;
+    if (i == null) return 0;
     const ref = p.tasks[i];
     if (where === 'child') { pos = i + 1; lvl = ref.level + 1; }
     else if (where === 'before') { pos = i; lvl = ref.level; }
@@ -155,6 +155,7 @@ export function addTaskNear(refUid: number | null, where: 'before' | 'after' | '
     pp.tasks.splice(pos, 0, t);
   });
   st.select([uid], uid);
+  return uid;
 }
 
 // Move a task with its whole subtree to become the sibling right after the target task.
@@ -174,6 +175,70 @@ export function moveSubtreeTo(uid: number, targetUid: number): boolean {
     pp.tasks.splice(M.subtreeEnd(pp, t), 0, ...block);
   });
   return true;
+}
+
+/* ---------- copy / paste (shared by the Gantt and WBS context menus) ---------- */
+
+// Each clipboard entry is a block: a task followed by its subtree, deep-cloned.
+const clip: Task[][] = [];
+export const hasClip = () => clip.length > 0;
+
+// Copies each task with its whole subtree. A task already covered by an earlier
+// selected subtree is not copied twice. Returns the number of tasks copied.
+export function copyTasks(uids: number[]): number {
+  const st = S(), p = st.p, idx = M.indexByUid(p);
+  const picks = [...new Set(uids)].map(u => idx[u]).filter((i): i is number => i != null).sort((a, b) => a - b);
+  clip.length = 0;
+  const covered = new Set<number>();
+  let count = 0;
+  for (const i of picks) {
+    if (covered.has(i)) continue;
+    const e = M.subtreeEnd(p, i);
+    for (let k = i; k < e; k++) covered.add(k);
+    clip.push(JSON.parse(JSON.stringify(p.tasks.slice(i, e))));
+    count += e - i;
+  }
+  if (count) st.toast('Copied ' + count + ' task' + (count > 1 ? 's' : '') + '.');
+  else st.toast('Nothing to copy.', true);
+  return count;
+}
+
+// Pastes the clipboard after the reference task (or at the end when null), as its
+// sibling. Internal predecessor links are remapped to the new uids; links to tasks
+// outside the copied block are kept as they were. Returns the new top-level uids.
+export function pasteTasks(refUid: number | null): number[] {
+  if (!clip.length) return [];
+  const st = S(), p = st.p;
+  let pos: number, lvl: number;
+  if (refUid == null) {
+    pos = p.tasks.length;
+    lvl = pos ? p.tasks[pos - 1].level : 1;
+  } else {
+    const i = M.indexByUid(p)[refUid];
+    if (i == null) return [];
+    pos = M.subtreeEnd(p, i);
+    lvl = p.tasks[i].level;
+  }
+  const tops: number[] = [];
+  st.commit(pp => {
+    let at = pos;
+    for (const block of clip) {
+      const map: Record<number, number> = {};
+      const clones = block.map(t => {
+        const c = JSON.parse(JSON.stringify(t)) as Task;
+        c.uid = pp.nextUid++;
+        map[t.uid] = c.uid;
+        c.level += lvl - block[0].level;
+        return c;
+      });
+      clones.forEach(c => { c.preds = c.preds.map(l => map[l.uid] != null ? { ...l, uid: map[l.uid] } : l); });
+      pp.tasks.splice(at, 0, ...clones);
+      tops.push(clones[0].uid);
+      at += clones.length;
+    }
+  });
+  if (tops.length) st.select(tops, tops[0]);
+  return tops;
 }
 
 export function indent(dir: 1 | -1) {

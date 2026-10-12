@@ -5,6 +5,7 @@ const ICONS: Record<string, string> = {
   link: 'M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5',
   unlink: 'M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5M3 3l18 18',
   trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
+  copy: 'M9 9h11v11H9zM15 9V5H5v10h4', paste: 'M9 3h6v3H9zM6 5H5v16h14V5h-1',
   undo: 'M9 14L4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3', redo: 'M15 14l5-5-5-5M20 9H9a5 5 0 0 0 0 10h3',
   file: 'M14 3H6v18h12V7zM14 3v4h4', upload: 'M12 15V3M7 8l5-5 5 5M4 17v3h16v-3', download: 'M12 3v12M7 10l5 5 5-5M4 17v3h16v-3',
   save: 'M5 3h11l4 4v14H5zM8 3v5h7M8 21v-7h8v7',

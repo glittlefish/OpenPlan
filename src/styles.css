@@ -237,7 +237,9 @@ select.sel:focus, input.inp:focus, textarea.inp:focus { outline: none; border-co
 .mini-sel { display: inline-flex; align-items: center; gap: 4px; }
 .card { background: var(--surface); border: 1px solid var(--border); }
 .scroll { flex: 1; min-height: 0; overflow: auto; padding: 10px; background: var(--app); }
-.canvas { background: var(--surface); overflow: auto; flex: 1; min-height: 0; }
+.canvas { background: var(--surface); overflow: auto; flex: 1; min-height: 0; cursor: grab; }
+.canvas g[data-uid] { cursor: pointer; }
+.canvas.panning, .canvas.panning g, .canvas.node-dragging, .canvas.node-dragging g { cursor: grabbing; }
 .canvas svg { display: block; }
 .alert { padding: 4px 10px; background: var(--critical-soft); color: var(--critical-edge); display: flex; gap: 6px; align-items: center; border-bottom: 1px solid var(--border); font-size: var(--fs-base); }
 .alert.warn { background: var(--warn-soft); color: var(--warn); }

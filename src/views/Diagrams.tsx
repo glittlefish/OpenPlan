@@ -2,10 +2,12 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import OP from '../core';
 import { useApp, useStore, S } from '../store';
 import { runAction, viewSvgString } from '../lib/actions';
-import { addTaskNear, moveSubtreeTo } from '../lib/taskOps';
+import { addTaskNear, copyTasks, hasClip, moveSubtreeTo, pasteTasks } from '../lib/taskOps';
 import Icon from '../components/Icon';
+import ContextMenu, { type CtxItem } from '../components/ContextMenu';
 
 // Zoomable SVG canvas. Ctrl+wheel zooms, a plain wheel scrolls natively.
+// Dragging empty canvas pans (scroll), with a grab / grabbing cursor.
 // openMode 'drawer' (Org): click selects and opens the side panel.
 // openMode 'dialog' (Network/WBS): click only selects; double-click opens a details dialog.
 // dragMove (WBS): pointer-drag a node onto another node to move that task's subtree.
@@ -17,7 +19,10 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMo
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const zoom = useStore(s => s.netZoom);
-  const suppressClick = useRef(false);
+  // Swallow the click/dblclick that follows a node drag, so a drag never reads as
+  // a select or opens the details dialog. Time-based: a genuine click after it works.
+  const suppressUntil = useRef(0);
+  const suppressed = () => Date.now() < suppressUntil.current;
   const dragMoveRef = useRef(dragMove);
   dragMoveRef.current = dragMove;
   const dragEnabled = !!dragMove && !!nodeClass;
@@ -40,6 +45,43 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMo
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
+  // Pan: hold the left button on empty canvas and drag to scroll it.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let panning = false, px = 0, py = 0;
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      if ((e.target as Element).closest('g[data-uid]')) return; // nodes: click / drag, not pan
+      panning = true; px = e.clientX; py = e.clientY;
+      el.classList.add('panning');
+      el.style.userSelect = 'none';
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!panning) return;
+      el.scrollLeft -= e.clientX - px;
+      el.scrollTop -= e.clientY - py;
+      px = e.clientX; py = e.clientY;
+      e.preventDefault();
+    };
+    const onUp = () => {
+      if (!panning) return;
+      panning = false;
+      el.classList.remove('panning');
+      el.style.userSelect = '';
+    };
+    const noDrag = (e: Event) => e.preventDefault(); // the SVG must not be natively dragged
+    el.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    el.addEventListener('dragstart', noDrag);
+    return () => {
+      el.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      el.removeEventListener('dragstart', noDrag);
+    };
+  }, []);
   // Native pointer events: the SVG is injected via dangerouslySetInnerHTML, so drag is delegated.
   useEffect(() => {
     const el = ref.current;
@@ -61,12 +103,14 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMo
         if (Math.hypot(e.clientX - sx, e.clientY - sy) < 5) return; // still a click
         dragging = true;
         src.classList.add('dragging');
+        el.classList.add('node-dragging');
         el.style.userSelect = 'none';
         const p = S().p, a = OP.model.indexByUid(p)[uid];
         sub = new Set();
         if (a != null) for (let k = a; k < OP.model.subtreeEnd(p, a); k++) sub.add(p.tasks[k].uid);
       }
       e.preventDefault();
+      // elementFromPoint works in screen coordinates, so this stays correct at any zoom.
       const hit = (document.elementFromPoint(e.clientX, e.clientY) as Element | null)?.closest(cls) || null;
       const ok = !!hit && hit !== src && !sub!.has(+(hit as SVGElement).dataset.uid!);
       const next = ok ? hit : null;
@@ -76,8 +120,9 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMo
       if (!active) return;
       if (dragging) {
         src?.classList.remove('dragging');
+        el.classList.remove('node-dragging');
         el.style.userSelect = '';
-        suppressClick.current = true; // the pointerup is followed by a click; swallow it
+        suppressUntil.current = Date.now() + 400; // swallow the click that follows this drag
         const drop = target as SVGElement | null; // clearHi() nulls target, so capture first
         clearHi();
         if (drop && dragMoveRef.current && dragMoveRef.current(uid, +drop.dataset.uid!)) S().select([uid], uid);
@@ -105,18 +150,25 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMo
   return (
     <div className="canvas" id="canvas" ref={ref} dangerouslySetInnerHTML={{ __html: svg }}
       onClick={e => {
-        if (suppressClick.current) { suppressClick.current = false; return; }
+        if (suppressed()) return;
         const uid = uidOf(e.target);
         if (uid == null) return;
         S().select([uid], uid);
         if (openMode === 'drawer') openDetails(uid);
       }}
-      onDoubleClick={e => { const uid = uidOf(e.target); if (uid == null) return; S().select([uid], uid); if (openMode === 'dialog') openDetails(uid); }}
+      onDoubleClick={e => {
+        if (suppressed()) return;
+        const uid = uidOf(e.target);
+        if (uid == null) return;
+        S().select([uid], uid);
+        if (openMode === 'dialog') openDetails(uid);
+      }}
       onContextMenu={e => {
         if (!onNodeContextMenu) return;
         e.preventDefault();
         const uid = uidOf(e.target);
-        if (uid != null) S().select([uid], uid);
+        // Keep a multi-selection when right-clicking one of its members.
+        if (uid != null && !S().sel.includes(uid)) S().select([uid], uid);
         onNodeContextMenu(uid, e.clientX, e.clientY);
       }}
       onKeyDown={e => {
@@ -198,6 +250,28 @@ export function WbsView() {
     if (r && r.task.level + 1 > st.wbsDepth) st.setUI({ wbsDepth: r.task.level + 1 });
     addTaskNear(refUid, 'child');
   };
+  // Paste after the right-clicked node; widen the shown depth if the pasted subtree is deeper.
+  const pasteAt = (refUid: number) => {
+    const tops = pasteTasks(refUid);
+    if (!tops.length) return;
+    const p = S().p, idx = OP.model.indexByUid(p);
+    let deep = st.wbsDepth;
+    tops.forEach(u => {
+      const i = idx[u];
+      if (i == null) return;
+      for (let k = i; k < OP.model.subtreeEnd(p, i); k++) deep = Math.max(deep, p.tasks[k].level);
+    });
+    if (deep > st.wbsDepth) st.setUI({ wbsDepth: deep });
+  };
+  const ctxItems = (uid: number): CtxItem[] => [
+    { label: 'Insert task before', icon: 'plus', onClick: () => addTaskNear(uid, 'before') },
+    { label: 'Insert task after', icon: 'plus', onClick: () => addTaskNear(uid, 'after') },
+    { label: 'Add subtask', icon: 'indent', onClick: () => addChild(uid) },
+    { hr: true },
+    // Copy the whole selection when the right-clicked node is part of it, else just that node.
+    { label: 'Copy', icon: 'copy', onClick: () => copyTasks(st.sel.includes(uid) ? st.sel : [uid]) },
+    { label: 'Paste', icon: 'paste', disabled: !hasClip(), onClick: () => pasteAt(uid) },
+  ];
   return (
     <div className="view">
       <div className="view-head"><h1>Work breakdown structure</h1>
@@ -218,15 +292,7 @@ export function WbsView() {
         onNodeContextMenu={(uid, x, y) => setCtx(uid == null ? null : { uid, x, y })}
         dragMove={(uid, target) => moveSubtreeTo(uid, target)} />
         : <Empty title="No work items yet" text="Build your task outline in the Gantt view; indented tasks become WBS levels." />}
-      {ctx && <>
-        <div className="ctx-backdrop" onPointerDown={() => setCtx(null)} onContextMenu={e => { e.preventDefault(); setCtx(null); }} />
-        <div className="menu open ctx-menu" role="menu" style={{ left: Math.max(8, Math.min(ctx.x, window.innerWidth - 240)), top: Math.max(8, Math.min(ctx.y, window.innerHeight - 150)) }}>
-          <button role="menuitem" onClick={() => { const u = ctx.uid; setCtx(null); addTaskNear(u, 'before'); }}><Icon name="plus" />Insert task before</button>
-          <button role="menuitem" onClick={() => { const u = ctx.uid; setCtx(null); addTaskNear(u, 'after'); }}><Icon name="plus" />Insert task after</button>
-          <hr />
-          <button role="menuitem" onClick={() => { const u = ctx.uid; setCtx(null); addChild(u); }}><Icon name="indent" />Add subtask</button>
-        </div>
-      </>}
+      {ctx && <ContextMenu x={ctx.x} y={ctx.y} items={ctxItems(ctx.uid)} onClose={() => setCtx(null)} />}
     </div>
   );
 }
