@@ -1,19 +1,20 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 import OP from '../core';
 import { useStore, S } from '../store';
 import * as ops from '../lib/taskOps';
 import Icon from './Icon';
-import type { CustomField, Resource } from '../types';
+import type { CustomField, Resource, Row } from '../types';
 import { version } from '../../package.json';
 import { projectFromTable } from '../lib/importTable';
 import { shareUrl } from '../lib/share';
 import { loadProject } from '../lib/actions';
 
-const U = OP.util;
+const U = OP.util, M = OP.model;
 const STATUSES = ['Draft', 'In review', 'Approved', 'Baselined', 'Final'];
 
-function Modal({ title, children, onSubmit, okLabel = 'Save', cancelLabel = 'Cancel', noOk }: {
+function Modal({ title, children, onSubmit, okLabel = 'Save', cancelLabel = 'Cancel', noOk, backdropClose }: {
   title: string; children: ReactNode; onSubmit?: (fd: FormData) => boolean | void; okLabel?: ReactNode; cancelLabel?: string; noOk?: boolean;
+  backdropClose?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const close = () => S().closeDialog();
@@ -26,8 +27,11 @@ function Modal({ title, children, onSubmit, okLabel = 'Save', cancelLabel = 'Can
     if (onSubmit && onSubmit(new FormData(e.currentTarget)) === false) return;
     close();
   };
+  const backdrop = (e: MouseEvent<HTMLDialogElement>) => {
+    if (backdropClose && e.target === e.currentTarget) close();
+  };
   return (
-    <dialog ref={ref} onClose={close} onCancel={e => { e.preventDefault(); close(); }}>
+    <dialog ref={ref} onClose={close} onClick={backdrop} onCancel={e => { e.preventDefault(); close(); }}>
       <form onSubmit={submit}>
         <div className="dlg-head"><h2>{title}</h2><button type="button" className="icon-btn" aria-label="Close" onClick={close}><Icon name="x" /></button></div>
         <div className="dlg-body">{children}</div>
@@ -280,6 +284,44 @@ function ConfirmDialog({ title, message, okLabel, onOk }: { title: string; messa
   );
 }
 
+function TaskDialog({ uid }: { uid: number }) {
+  const st = useStore();
+  const t = st.p.tasks.find(x => x.uid === uid);
+  const r = t ? st.s.rows.find((x: Row) => x.task.uid === t.uid) : undefined;
+  if (!t || !r) return null;
+  const stat = (v: ReactNode, k: string) => <div className="stat" key={k}><b>{v}</b><span>{k}</span></div>;
+  return (
+    <Modal title={'Task ' + r.id + ' details'} cancelLabel="Close" noOk backdropClose>
+      <div><b>{t.name || '(unnamed task)'}</b> <span className="muted small">· WBS {r.wbs}{r.summary ? ' · summary task' : ''}{r.milestone ? ' · milestone' : ''}</span></div>
+      {r.conflict && <div className="alert inline"><Icon name="alert" />{r.conflict}.</div>}
+      {r.missedDeadline && <div className="alert inline"><Icon name="deadline" />Finishes {U.fmt(r.finishDn)}, after its deadline.</div>}
+      <div className="stats">
+        {stat(U.fmt(r.startDn), 'Start')}
+        {stat(U.fmt(r.finishDn), 'Finish')}
+        {stat(M.fmtDuration(r.duration), 'Duration')}
+        {stat(U.num(r.slack) + 'd', 'Total slack')}
+        {stat(r.summary ? '—' : U.num(r.freeSlack) + 'd', 'Free slack')}
+        {stat(r.critical ? <span style={{ color: 'var(--critical-edge)' }}>Yes</span> : 'No', 'Critical')}
+        {stat(U.num(r.es) + ' / ' + U.num(r.ef), 'ES / EF (day)')}
+        {stat(U.num(r.ls) + ' / ' + U.num(r.lf), 'LS / LF (day)')}
+        {stat(U.num(r.work) + 'h', 'Work')}
+        {stat(U.money(r.cost), 'Cost')}
+        {stat(U.money(r.actualCost), 'Actual cost')}
+        {stat(r.percent + '%', 'Complete')}
+      </div>
+      <div className="row2">
+        <div className="field"><span>Predecessors</span><div>{M.formatPreds(st.p, t) || <span className="muted">None</span>}</div></div>
+        <div className="field"><span>Resources</span><div>{r.names || <span className="muted">Unassigned</span>}</div></div>
+      </div>
+      <div className="row2">
+        <div className="field"><span>Priority</span><div>{t.priority}</div></div>
+        <div className="field"><span>Constraint</span><div>{M.CONSTRAINTS[t.constraint] || t.constraint}{t.constraintDate ? ' · ' + t.constraintDate : ''}</div></div>
+      </div>
+      {t.notes && <div className="field"><span>Notes</span><div>{t.notes}</div></div>}
+    </Modal>
+  );
+}
+
 export default function DialogHost() {
   const dialog = useStore(s => s.dialog);
   if (!dialog) return null;
@@ -287,6 +329,7 @@ export default function DialogHost() {
     case 'settings': return <SettingsDialog />;
     case 'recurring': return <RecurringDialog />;
     case 'resource': return <ResourceDialog uid={dialog.props.uid} />;
+    case 'task': return <TaskDialog uid={dialog.props.uid} />;
     case 'about': return <AboutDialog />;
     case 'import': return <ImportDialog />;
     case 'share': return <ShareDialog />;

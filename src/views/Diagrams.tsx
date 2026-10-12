@@ -1,10 +1,12 @@
-import { useLayoutEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useApp, useStore, S } from '../store';
 import { runAction, viewSvgString } from '../lib/actions';
 import Icon from '../components/Icon';
 
-// Zoomable SVG canvas; clicking a task node selects it and opens the details panel.
-function Canvas({ svg, nodeClass }: { svg: string; nodeClass?: string }) {
+// Zoomable SVG canvas. Ctrl+wheel zooms, a plain wheel scrolls natively.
+// openMode 'drawer' (WBS/Org): click selects and opens the side panel.
+// openMode 'dialog' (Network): click only selects; double-click opens a details dialog.
+function Canvas({ svg, nodeClass, openMode = 'drawer' }: { svg: string; nodeClass?: string; openMode?: 'drawer' | 'dialog' }) {
   const ref = useRef<HTMLDivElement>(null);
   const zoom = useStore(s => s.netZoom);
   useLayoutEffect(() => {
@@ -14,19 +16,39 @@ function Canvas({ svg, nodeClass }: { svg: string; nodeClass?: string }) {
     el.setAttribute('width', String(Math.round(+el.dataset.w * zoom)));
     el.setAttribute('height', String(Math.round(+el.dataset.h! * zoom)));
   }, [svg, zoom]);
-  const pick = (target: EventTarget) => {
-    if (!nodeClass) return false;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return; // plain wheel: keep native scrolling
+      e.preventDefault();
+      const st = S();
+      st.setUI({ netZoom: Math.max(0.2, Math.min(2.5, st.netZoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1))) });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+  const uidOf = (target: EventTarget): number | null => {
+    if (!nodeClass) return null;
     const g = (target as Element).closest('.' + nodeClass) as SVGGElement | null;
-    if (!g) return false;
-    const uid = +g.dataset.uid!;
-    S().select([uid], uid);
-    S().setUI({ drawer: true });
-    return true;
+    return g ? +g.dataset.uid! : null;
+  };
+  const openDetails = (uid: number) => {
+    if (openMode === 'dialog') S().openDialog('task', { uid });
+    else S().setUI({ drawer: true });
   };
   return (
     <div className="canvas" id="canvas" ref={ref} dangerouslySetInnerHTML={{ __html: svg }}
-      onClick={e => { pick(e.target); }}
-      onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && pick(e.target)) e.preventDefault(); }} />
+      onClick={e => { const uid = uidOf(e.target); if (uid == null) return; S().select([uid], uid); if (openMode === 'drawer') openDetails(uid); }}
+      onDoubleClick={e => { const uid = uidOf(e.target); if (uid == null) return; S().select([uid], uid); if (openMode === 'dialog') openDetails(uid); }}
+      onKeyDown={e => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const uid = uidOf(e.target);
+        if (uid == null) return;
+        e.preventDefault();
+        S().select([uid], uid);
+        openDetails(uid);
+      }} />
   );
 }
 
@@ -71,7 +93,7 @@ export function NetworkView() {
         <label className="toggle"><input type="checkbox" checked={st.critical} onChange={e => st.setUI({ critical: e.target.checked })} />Critical path</label>
         <span className="spacer" /><ZoomTools />
       </div>
-      {svg ? <Canvas svg={svg} nodeClass="nnode" /> : <Empty title="Nothing to show" text="Add tasks in the Gantt view first." />}
+      {svg ? <Canvas svg={svg} nodeClass="nnode" openMode="dialog" /> : <Empty title="Nothing to show" text="Add tasks in the Gantt view first." />}
     </div>
   );
 }
