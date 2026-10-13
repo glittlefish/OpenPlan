@@ -1,6 +1,7 @@
 import OP from '../core';
 import { ask, S, focusKey, rowByUid } from '../store';
-import type { Annotation, BoxRule, BoxStyle, Project, Task } from '../types';
+import { activeCols, colDef, gridItems, type GroupItem } from './grid';
+import type { Annotation, BoxRule, BoxStyle, Project, Row, Task } from '../types';
 
 const U = OP.util, M = OP.model;
 
@@ -484,4 +485,127 @@ export function removeAnnotation(id: string) {
   const st = S();
   st.commit(p => { p.annotations = (p.annotations || []).filter(x => x.id !== id); });
   if (st.annoSel === id || st.annoEdit === id) st.setUI({ annoSel: null, annoEdit: null });
+}
+
+// ---- Find / fill / paste (PRD M2-10, M6) ----
+
+// Copy the focused cell's task value down into every other selected row of the same column.
+// Read-only cells (summary rows, computed columns) are skipped with a toast.
+export function fillDown(): void {
+  const st = S();
+  const fk = (document.activeElement as HTMLElement | null)?.dataset?.fk || '';
+  const m = /^(\d+):(.+)$/.exec(fk);
+  if (!m) { st.toast('Focus a cell in the column to fill, select more rows, then press Ctrl+D.', true); return; }
+  const uid = +m[1], col = m[2];
+  const src = rowByUid(uid);
+  const c = colDef(st, col);
+  if (!src || !c) return;
+  const targets = st.sel.filter(u => u !== uid && rowByUid(u));
+  if (!targets.length) { st.toast('Select the rows to fill (Ctrl+click or Shift+click), then press Ctrl+D.', true); return; }
+  if (col === 'preds') { st.toast('Predecessors cannot be filled down — they are links between tasks.', true); return; }
+  if (!c.edit && col !== 'name') { st.toast('This column is read-only.', true); return; }
+
+  let filled = 0, skipped = 0;
+  st.commit(p => {
+    const srcT = findTask(p, uid);
+    targets.forEach(u => {
+      const r = rowByUid(u);
+      if (!r) return;
+      if (r.summary && c.sumRo) { skipped++; return; }
+      const t = findTask(p, u);
+      if (col === 'name') t.name = srcT.name;
+      else if (col === 'duration') setDuration(p, t, +srcT.duration || 0);
+      else if (col === 'work') { const err = setWork(p, t, taskWork(p, srcT)); if (err) skipped++; }
+      else if (col === 'percent') t.percent = srcT.percent;
+      else if (c.cf) (t.custom as Record<string, unknown>)[c.cf] = (srcT.custom as Record<string, unknown>)[c.cf] ?? '';
+      else if (c.field) (t as unknown as Record<string, unknown>)[c.field] = (srcT as unknown as Record<string, unknown>)[c.field] ?? '';
+      filled++;
+    });
+    if (!filled && !skipped) return false;
+  });
+  st.toast('Filled ' + filled + ' row' + (filled === 1 ? '' : 's') + (skipped ? ' · ' + skipped + ' read-only skipped' : ''));
+}
+
+// Tolerant date parsing for pasted data: ISO, Y/M/D in either order, or an Excel serial number.
+function looseIso(v: string): string | null {
+  const s = v.trim();
+  if (!s) return null;
+  let m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(s);
+  if (m) return U.iso(Math.round(Date.UTC(+m[1], +m[2] - 1, +m[3]) / 864e5));
+  m = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/.exec(s);
+  if (m) return U.iso(Math.round(Date.UTC(+m[3], +m[1] - 1, +m[2]) / 864e5));
+  if (/^\d{4,5}(\.\d+)?$/.test(s)) { const dn = Math.round(+s) - 25569; return dn > 0 ? U.iso(dn) : null; }
+  const dn = U.parseDate(s);
+  return dn == null ? null : U.iso(dn);
+}
+
+// Paste a rectangle of cells copied from Excel (TSV/CSV) into the grid, starting at the focused cell.
+// Columns map by position onto the visible grid columns; rows map onto the following visible tasks.
+export function pasteCells(text: string, anchorUid: number, anchorCol: string): void {
+  const st = S();
+  const rows = text.replace(/\r/g, '').split('\n').filter(r => r !== '');
+  if (!rows.length) return;
+  const grid = rows.map(r => r.includes('\t') ? r.split('\t') : r.split(',').length > 1 ? r.split(',') : [r]);
+  if (grid.length === 1 && grid[0].length === 1) return; // single cell: let the default paste handle it
+  const ks = activeCols(st);
+  const col0 = ks.indexOf(anchorCol);
+  if (col0 < 0) { st.toast('Click a cell first, then paste.', true); return; }
+  const list = gridItems(st).filter((x): x is Row => !(x as GroupItem).group);
+  const row0 = list.findIndex(r => r.task.uid === anchorUid);
+  if (row0 < 0) return;
+
+  let pasted = 0, dropped = 0, extra = 0;
+  st.commit(p => {
+    grid.forEach((cells, i) => {
+      const r = list[row0 + i];
+      if (!r) { extra++; return; }
+      const t = findTask(p, r.task.uid);
+      cells.forEach((raw, j) => {
+        const k = ks[col0 + j];
+        const c = k ? colDef(st, k) : null;
+        if (!k || !c) { dropped++; return; }
+        const v = raw.trim();
+        if (r.summary && c.sumRo) { dropped++; return; }
+        if (k === 'name') { t.name = v; pasted++; return; }
+        if (k === 'notes') { t.notes = v; pasted++; return; }
+        if (k === 'preds') { dropped++; return; }
+        if (c.edit === 'duration') {
+          const d = M.parseDuration(v, p.hoursPerDay);
+          if (d == null) { dropped++; return; }
+          setDuration(p, t, d); pasted++; return;
+        }
+        if (c.edit === 'work') {
+          const hrs = parseFloat(v.replace(/[^\d.]/g, ''));
+          if (!isFinite(hrs)) { dropped++; return; }
+          if (setWork(p, t, hrs)) { dropped++; return; }
+          pasted++; return;
+        }
+        if (c.edit === 'percent') {
+          const n = Math.max(0, Math.min(100, Math.round(parseFloat(v) || 0)));
+          t.percent = n; pasted++; return;
+        }
+        if (c.edit === 'date') {
+          const iso = looseIso(v);
+          if (!iso) { dropped++; return; }
+          (t as unknown as Record<string, unknown>)[c.field!] = iso; pasted++; return;
+        }
+        if (c.edit === 'select') {
+          if (!(v in (c.options || {}))) { dropped++; return; }
+          (t as unknown as Record<string, unknown>)[c.field!] = v; pasted++; return;
+        }
+        if (c.edit === 'number') {
+          const n = +v.replace(/[^\d.-]/g, '');
+          if (!isFinite(n)) { dropped++; return; }
+          (t as unknown as Record<string, unknown>)[c.field!] = c.field === 'priority' ? Math.min(1000, Math.round(n)) : Math.max(0, n);
+          pasted++; return;
+        }
+        if (c.cf) { (t.custom as Record<string, unknown>)[c.cf] = c.edit === 'cfnum' ? (v === '' ? '' : +v || 0) : v; pasted++; return; }
+        if (c.edit === 'text' && c.field) { (t as unknown as Record<string, unknown>)[c.field] = v; pasted++; return; }
+        dropped++;
+      });
+    });
+    if (!pasted) return false;
+  });
+  st.toast('Pasted ' + pasted + ' cell' + (pasted === 1 ? '' : 's')
+    + (dropped ? ' · ' + dropped + ' skipped' : '') + (extra ? ' · ' + extra + ' rows beyond the task list ignored' : ''));
 }

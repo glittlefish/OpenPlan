@@ -141,11 +141,36 @@ function Indicators({ st, r }: { st: Store; r: Row }) {
   return <td className="ind"><span className="ind-icons">{out}</span></td>;
 }
 
+// Notes column: multi-line text wraps in the cell; click (or keyboard navigation) to edit.
+function NotesCell({ st, r }: { st: Store; r: Row }) {
+  const [edit, setEdit] = useState(false);
+  const t = r.task, uid = t.uid;
+  const focusSel = () => { if (!(st.sel.length === 1 && st.sel[0] === uid)) st.select([uid], uid); };
+  if (edit) return (
+    <td className="notes-cell" onBlur={() => setEdit(false)}>
+      <Field className="cell notes" fk={uid + ':notes'} value={t.notes || ''} autoFocus spellCheck={false}
+        aria-label={'Task ' + r.id + ' notes'} onFocus={focusSel}
+        onCommit={v => { commitCell('notes', uid, v); }}
+        onNav={d => { setEdit(false); navFrom(uid, 'notes', d); }} />
+    </td>
+  );
+  return (
+    <td className="notes-cell" title={t.notes} onClick={e => { clickSelect(uid, e); setEdit(true); }}>
+      <div className="notes-view">{t.notes || ''}</div>
+      {/* Invisible anchor so keyboard navigation (focusKey) can reach this cell. */}
+      <Field className="notes-ghost" fk={uid + ':notes'} value={t.notes || ''} tabIndex={-1} aria-hidden="true"
+        onFocus={() => { focusSel(); setEdit(true); requestAnimationFrame(() => focusKey(uid + ':notes', false)); }}
+        onCommit={() => {}} />
+    </td>
+  );
+}
+
 function Cell({ st, k, r, idx }: { st: Store; k: string; r: Row; idx: any }) {
   const c = colDef(st, k)!, t = r.task, uid = t.uid;
   const focusSel = () => { if (!(st.sel.length === 1 && st.sel[0] === uid)) st.select([uid], uid); };
   if (k === 'id') return <td className="id" onClick={e => clickSelect(uid, e)}>{r.id}</td>;
   if (k === 'ind') return <Indicators st={st} r={r} />;
+  if (k === 'notes') return <NotesCell st={st} r={r} />;
   if (k === 'name') {
     const lvl = st.group !== 'none' ? 1 : t.level;
     return (
@@ -345,6 +370,7 @@ export default function GanttView() {
     { hr: true },
     { label: 'Insert task before', icon: 'plus', onClick: () => { const u = ops.addTaskNear(uid, 'before'); if (u) focusKey(u + ':name'); } },
     { label: 'Insert task after', icon: 'plus', onClick: () => { const u = ops.addTaskNear(uid, 'after'); if (u) focusKey(u + ':name'); } },
+    { label: 'Fill down (Ctrl+D)', icon: 'down', onClick: () => ops.fillDown() },
   ];
 
   const g = useMemo(() => C.gantt({
@@ -422,7 +448,17 @@ export default function GanttView() {
           <button className="linkbtn" onClick={() => st.setUI({ filter: 'all', group: 'none' })}>Show all tasks</button></div>
       )}
       <div className="split" data-hide={hide}>
-        <div className="grid-pane" ref={gridRef} style={{ width: st.gridW }} onScroll={e => sync(e.currentTarget, chartEl)}>
+        <div className="grid-pane" ref={gridRef} style={{ width: st.gridW }} onScroll={e => sync(e.currentTarget, chartEl)}
+          onPaste={e => {
+            // Multi-cell pastes from Excel (TSV/CSV) fill the grid; single-cell pastes go into the input.
+            const text = e.clipboardData.getData('text/plain');
+            if (!text || (!text.includes('\t') && !text.includes('\n'))) return;
+            const fk = (document.activeElement as HTMLElement | null)?.dataset?.fk || '';
+            const m = /^(\d+):(.+)$/.exec(fk);
+            if (!m) return;
+            e.preventDefault();
+            ops.pasteCells(text, +m[1], m[2]);
+          }}>
           <Grid st={st} list={list} onCtx={openCtx} />
         </div>
         <div className="splitter" title="Drag to resize, or to either edge to hide a side" onPointerDown={startSplit}>

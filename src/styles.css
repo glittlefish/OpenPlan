@@ -326,6 +326,16 @@ table.grid tr.summary input.name, table.grid tr.summary td.ro { font-weight: 700
 table.grid tr.newrow input { color: var(--text-muted); font-style: italic; }
 table.grid tr.newrow input:focus { font-style: normal; color: var(--text); }
 table.grid tr.grouprow td { background: var(--group-row); height: var(--row); padding: 0 4px; }
+.notes-cell { position: relative; }
+.notes-view { padding: 3px 5px; min-height: calc(var(--row) - 1px); white-space: pre-wrap; word-break: break-word; font-size: var(--fs-sm); color: var(--text); cursor: text; }
+.notes-cell .notes-ghost { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; pointer-events: none; border: 0; background: transparent; padding: 0; }
+.findbar { display: flex; align-items: center; gap: 6px; padding: 5px 10px; background: var(--surface-2); border-bottom: 1px solid var(--border); font-size: var(--fs-sm); flex-wrap: wrap; }
+.findbar svg.i { color: var(--text-muted); flex: none; }
+.findbar input.cell { width: 200px; height: 24px; border: 1px solid var(--border); background: var(--surface); padding: 0 6px; }
+.findbar select.cell { height: 24px; border: 1px solid var(--border); background: var(--surface); }
+.findbar .find-opt { display: flex; align-items: center; gap: 4px; color: var(--text-muted); white-space: nowrap; }
+.findbar .find-count { min-width: 52px; text-align: center; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.findbar .btn { height: 24px; padding: 0 8px; white-space: nowrap; }
 .namecell { display: flex; align-items: center; height: calc(var(--row) - 1px); }
 .caret { width: 16px; height: 16px; flex: none; display: grid; place-items: center; border: 0; background: transparent; cursor: pointer; color: var(--text); padding: 0; }
 .caret:hover { background: var(--hover-strong); }
