@@ -239,6 +239,8 @@ function ReportTab({ st }: { st: Store }) {
         <Small icon="table" label="Excel (.xlsx)" onClick={() => runAction('xlsx')} />
         <Small icon="table" label="CSV" onClick={() => runAction('csv')} />
         <Small icon="file" label="MS Project (.xml)" onClick={() => runAction('mspxml')} />
+        <Small icon="note" label="WBS Dictionary…" onClick={() => runAction('wbsdoc')} />
+        <Small icon="copy" label="Copy Picture" disabled={!hasImage(st)} onClick={() => runAction('copyimg')} />
       </Stack>
     </Group>
   </>;

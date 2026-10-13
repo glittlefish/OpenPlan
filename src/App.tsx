@@ -26,6 +26,7 @@ function onKeyDown(e: KeyboardEvent) {
   if (st.dialog) return;
   if (mod && key === 'f') { e.preventDefault(); st.setUI({ findOpen: !st.findOpen }); return; }
   if (mod && key === 's') { e.preventDefault(); runAction('save'); return; }
+  if (mod && key === 'p') { e.preventDefault(); runAction('print'); return; }
   if (mod && !editing && key === 'z') { e.preventDefault(); if (e.shiftKey) st.redoAct(); else st.undoAct(); return; }
   if (mod && !editing && key === 'y') { e.preventDefault(); st.redoAct(); return; }
   if (e.key === 'Escape' && st.menu) { st.setUI({ menu: null }); return; }

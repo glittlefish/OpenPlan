@@ -118,7 +118,7 @@ OP.io = (function () {
         else OP.notify('The chart is too large for a PNG. Try the SVG export instead.');
       }, 'image/png');
     };
-    img.onerror = function () { OP.notify('Could not create the image. Try the SVG export instead.'); };
+    img.onerror = function () { notify('Could not create the image. Try the SVG export instead.', true); };
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(standaloneSVG(svg));
   }
 
@@ -137,7 +137,32 @@ OP.io = (function () {
     setTimeout(function () { w.print(); }, 300);
   }
 
+  // Copy the chart to the clipboard as a high-resolution PNG (PRD M18-4); falls back
+  // to a download when the clipboard API is unavailable.
+  function copyPNG(svg, name, notify) {
+    var w = +svg.getAttribute('width'), h = +svg.getAttribute('height');
+    var scale = Math.min(2, 16000 / Math.max(w, h), Math.sqrt(16e6 / (w * h)));
+    var img = new Image();
+    img.onload = function () {
+      var c = document.createElement('canvas');
+      c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+      var ctx = c.getContext('2d');
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, 0, 0, w, h);
+      c.toBlob(function (b) {
+        if (!b) { notify('Could not create the picture. Try the SVG export instead.', true); return; }
+        if (navigator.clipboard && window.ClipboardItem) {
+          navigator.clipboard.write([new ClipboardItem({ 'image/png': b })])
+            .then(function () { notify('Picture copied to the clipboard'); })
+            .catch(function () { U.download(name + '.png', b); notify('Clipboard is unavailable; the PNG was downloaded instead.'); });
+        } else { U.download(name + '.png', b); notify('Clipboard is unavailable; the PNG was downloaded instead.'); }
+      }, 'image/png');
+    };
+    img.onerror = function () { OP.notify('Could not create the picture. Try the SVG export instead.'); };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(standaloneSVG(svg));
+  }
+
   return {
-    toJSON: toJSON, fromJSON: fromJSON, taskTable: taskTable, toCSV: toCSV, insertProject: insertProject, exportSVG: exportSVG, exportPNG: exportPNG, printSVG: printSVG
+    toJSON: toJSON, fromJSON: fromJSON, taskTable: taskTable, toCSV: toCSV, insertProject: insertProject, exportSVG: exportSVG, exportPNG: exportPNG, printSVG: printSVG, copyPNG: copyPNG, standaloneSVG: standaloneSVG
   };
 })();

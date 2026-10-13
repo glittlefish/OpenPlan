@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 import OP from '../core';
-import { useStore, S } from '../store';
+import { useStore, S, VIEW_NAMES } from '../store';
 import * as ops from '../lib/taskOps';
 import Icon from './Icon';
 import { TaskEditor } from './Drawer';
@@ -9,6 +9,9 @@ import { version } from '../../package.json';
 import { projectFromTable } from '../lib/importTable';
 import { shareUrl } from '../lib/share';
 import { loadProject } from '../lib/actions';
+import { printView } from '../lib/print';
+import { toWbsDictionaryDoc } from '../lib/wbsdoc';
+import type { PrintConfig, PrintSlot } from '../store';
 
 const U = OP.util;
 const STATUSES = ['Draft', 'In review', 'Approved', 'Baselined', 'Final'];
@@ -752,6 +755,87 @@ function BoxColorDialog({ uids }: { uids: number[] }) {
   );
 }
 
+/* ---------- print (PRD M18) ---------- */
+
+const SLOT_TYPES: [string, string][] = [['none', 'Nothing'], ['page', 'Page number'], ['date', 'Date'], ['project', 'Project name'], ['custom', 'Custom text']];
+
+function SlotEditor({ label, slots, onChange }: { label: string; slots: [PrintSlot, PrintSlot, PrintSlot]; onChange: (s: [PrintSlot, PrintSlot, PrintSlot]) => void }) {
+  return <div className="field"><span>{label}</span><div className="print-slots">
+    {slots.map((s, i) => (
+      <div key={i} className="print-slot">
+        <select className="inp" value={s.type} onChange={e => {
+          const next = [...slots] as [PrintSlot, PrintSlot, PrintSlot];
+          next[i] = { ...s, type: e.target.value as PrintSlot['type'] };
+          onChange(next);
+        }}>
+          {SLOT_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        {s.type === 'custom' && <input className="inp" placeholder="Text" value={s.text} onChange={e => {
+          const next = [...slots] as [PrintSlot, PrintSlot, PrintSlot];
+          next[i] = { ...s, text: e.target.value };
+          onChange(next);
+        }} />}
+      </div>
+    ))}
+  </div></div>;
+}
+
+function PrintDialog() {
+  const st = useStore();
+  const [cfg, setCfg] = useState<PrintConfig>(JSON.parse(JSON.stringify(st.printCfg)));
+  const upd = (patch: Partial<PrintConfig>) => setCfg(c => ({ ...c, ...patch }));
+  return (
+    <Modal title={'Print ' + VIEW_NAMES[st.view]} okLabel="Print" onClose={() => S().closeDialog()} onSubmit={() => {
+      st.setUI({ printCfg: cfg });
+      printView(st, cfg);
+    }}>
+      <div className="two">
+        <label className="field"><span>Paper</span>
+          <select className="inp" value={cfg.paper} onChange={e => upd({ paper: e.target.value as PrintConfig['paper'] })}>
+            <option value="a4">A4</option><option value="a3">A3</option><option value="letter">Letter</option>
+          </select>
+        </label>
+        <label className="field"><span>Orientation</span>
+          <select className="inp" value={cfg.orient} onChange={e => upd({ orient: e.target.value as PrintConfig['orient'] })}>
+            <option value="landscape">Landscape</option><option value="portrait">Portrait</option>
+          </select>
+        </label>
+      </div>
+      <SlotEditor label="Header (left / center / right)" slots={cfg.header} onChange={header => upd({ header })} />
+      <SlotEditor label="Footer (left / center / right)" slots={cfg.footer} onChange={footer => upd({ footer })} />
+      <p className="muted">The chart is scaled to fit the page width and split into pages between node rows, so no box is cut across pages. The browser's print preview shows the pages.</p>
+    </Modal>
+  );
+}
+
+/* ---------- WBS dictionary export (PRD 6.5) ---------- */
+
+function WbsDocDialog() {
+  const st = useStore();
+  const [template, setTemplate] = useState<'compact' | 'full'>('full');
+  const [scope, setScope] = useState<'all' | 'leaves' | 'critical'>('all');
+  return (
+    <Modal title="Export WBS dictionary to Word" okLabel="Download" onClose={() => S().closeDialog()} onSubmit={() => {
+      U.download(U.slug(st.p.name) + '-wbs-dictionary.doc', toWbsDictionaryDoc(st.p, { template, scope }), 'application/msword');
+      st.toast('Word document downloaded');
+    }}>
+      <div className="two">
+        <label className="field"><span>Template</span>
+          <select className="inp" value={template} onChange={e => setTemplate(e.target.value as 'compact' | 'full')}>
+            <option value="full">Full (all fields)</option><option value="compact">Compact (name + duration + notes)</option>
+          </select>
+        </label>
+        <label className="field"><span>Tasks</span>
+          <select className="inp" value={scope} onChange={e => setScope(e.target.value as 'all' | 'leaves' | 'critical')}>
+            <option value="all">All tasks</option><option value="leaves">Leaf tasks only</option><option value="critical">Critical path only</option>
+          </select>
+        </label>
+      </div>
+      <p className="muted">A .doc file with a cover page, contents list, one section per task and a task list appendix. Word shows it with real heading styles, so you can insert an automatic table of contents there.</p>
+    </Modal>
+  );
+}
+
 export default function DialogHost() {
   const dialog = useStore(s => s.dialog);
   if (!dialog) return null;
@@ -769,6 +853,8 @@ export default function DialogHost() {
     case 'calendar': return <CalendarDialog />;
     case 'boxstyles': return <BoxStylesDialog />;
     case 'boxcolor': return <BoxColorDialog uids={dialog.props.uids} />;
+    case 'print': return <PrintDialog />;
+    case 'wbsdoc': return <WbsDocDialog />;
     default: return null;
   }
 }

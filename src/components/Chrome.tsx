@@ -180,6 +180,8 @@ export function Backstage() {
       <Tile icon="table" title="Excel workbook (.xlsx)" sub="Task table with real dates, costs and slack" act="xlsx" />
       <Tile icon="table" title="CSV (.csv)" sub="The same table as plain text, for any spreadsheet" act="csv" />
       <Tile icon="file" title="MS Project (.xml)" sub="Exchange format understood by Microsoft Project and compatible tools" act="mspxml" />
+      <Tile icon="note" title="Word WBS dictionary (.doc)" sub="Cover page, one section per task and a task list appendix" act="wbsdoc" />
+      <Tile icon="copy" title="Copy picture to clipboard" sub="High-resolution PNG (2×) of the current view" act="copyimg" disabled={!img} />
       <Tile icon="image" title={'Picture of the ' + viewName + ' (.png)'} sub={img ? 'For Word reports' : 'Switch to Gantt, Network, WBS or Team Chart first'} act="png" disabled={!img} />
       <Tile icon="image" title="Vector picture (.svg)" sub="Sharp at any size" act="svg" disabled={!img} /></>;
   } else if (page === 'print') {

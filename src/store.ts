@@ -46,15 +46,30 @@ export interface UIState {
   annoSel: string | null;
   annoEdit: string | null;
   findOpen: boolean;
+  /** Print settings (PRD M18): paper, orientation and header/footer slots; shared by chart views. */
+  printCfg: PrintConfig;
+}
+
+export interface PrintSlot { type: 'none' | 'page' | 'date' | 'project' | 'custom'; text: string }
+export interface PrintConfig {
+  paper: 'a4' | 'a3' | 'letter';
+  orient: 'portrait' | 'landscape';
+  header: [PrintSlot, PrintSlot, PrintSlot];
+  footer: [PrintSlot, PrintSlot, PrintSlot];
 }
 
 const UI_DEFAULTS: UIState = {
   view: 'gantt', zoom: 'week', critical: true, gridW: 600, ganttHide: 'none', drawer: window.innerWidth > 1100, netScope: 'all', netDates: false,
   netZoom: 1, wbsDepth: 99, filter: 'all', group: 'none', sort: 'id', cols: DEFAULT_COLS.slice(), showBaseline: true,
   report: 'overview', tab: 'task', timeline: true, ribbonMin: false, theme: 'light', bars: 'teal', fullYear: false, guide: true,
-  wbsBox: ['wbs'], annoSel: null, annoEdit: null, findOpen: false
+  wbsBox: ['wbs'], annoSel: null, annoEdit: null, findOpen: false,
+  printCfg: {
+    paper: 'a4', orient: 'landscape',
+    header: [{ type: 'project', text: '' }, { type: 'none', text: '' }, { type: 'date', text: '' }],
+    footer: [{ type: 'none', text: '' }, { type: 'page', text: '' }, { type: 'none', text: '' }]
+  }
 };
-const PERSISTED_UI: (keyof UIState)[] = ['view', 'zoom', 'critical', 'gridW', 'ganttHide', 'drawer', 'netDates', 'wbsDepth', 'filter', 'group', 'sort', 'cols', 'showBaseline', 'report', 'tab', 'timeline', 'theme', 'bars', 'fullYear', 'guide', 'wbsBox'];
+const PERSISTED_UI: (keyof UIState)[] = ['view', 'zoom', 'critical', 'gridW', 'ganttHide', 'drawer', 'netDates', 'wbsDepth', 'filter', 'group', 'sort', 'cols', 'showBaseline', 'report', 'tab', 'timeline', 'theme', 'bars', 'fullYear', 'guide', 'wbsBox', 'printCfg'];
 
 export interface Dialog { type: string; props?: any }
 export type SaveState = 'ok' | 'full' | 'off';

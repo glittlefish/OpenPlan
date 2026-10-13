@@ -1,5 +1,5 @@
 import OP from '../core';
-import { S, VIEW_NAMES, ask, PREV_STORE, type Store } from '../store';
+import { S, ask, PREV_STORE, type Store } from '../store';
 import { gridItems } from './grid';
 import { toXlsx } from './xlsx';
 import { toMsProjectXml, fromMsProjectXml } from './msproject';
@@ -140,11 +140,18 @@ export function runAction(a: string) {
       break;
     }
     case 'print': {
-      const svg = viewSvgString(st);
-      if (svg) IO.printSVG(svgElement(svg), st.p.name + ' — ' + VIEW_NAMES[st.view]);
+      // Chart views get the paginated print dialog (PRD M18); other views use the browser.
+      if (hasImage(st)) st.openDialog('print');
       else window.print();
       break;
     }
+    case 'copyimg': {
+      const svg = viewSvgString(st);
+      if (!svg) { st.toast('Switch to Gantt, Network, WBS or Team Chart to copy a picture.'); return; }
+      IO.copyPNG(svgElement(svg), name + '-' + st.view, (m: string, err?: boolean) => st.toast(m, err));
+      break;
+    }
+    case 'wbsdoc': st.openDialog('wbsdoc'); break;
     case 'settings': st.openDialog('settings'); break;
     case 'about': st.openDialog('about'); break;
   }
