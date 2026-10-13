@@ -20,8 +20,13 @@ OP.io = (function () {
       if (!same) { same = { id: 'c' + Date.now().toString(36) + p.customFields.length, name: f.name, type: f.type }; p.customFields.push(same); }
       cfMap[f.id] = same.id;
     });
-    var newHol = sub.holidays.filter(function (h) { return p.holidays.indexOf(h) < 0; }).length;
-    if (newHol) warnings.push(newHol + ' holiday' + (newHol > 1 ? 's were' : ' was') + ' not added to this calendar');
+    // Carry the subproject's dated calendar exceptions over (holidays etc.); local entries win.
+    var cal = p.calendar || (p.calendar = { workingDays: [1, 2, 3, 4, 5], workTimes: [{ start: '08:00', end: '12:00' }, { start: '13:00', end: '17:00' }], exceptions: [] });
+    var haveExc = {};
+    (cal.exceptions || []).forEach(function (e) { haveExc[e.date] = true; });
+    ((sub.calendar && sub.calendar.exceptions) || []).forEach(function (e) {
+      if (e && e.date && !haveExc[e.date]) { haveExc[e.date] = true; (cal.exceptions = cal.exceptions || []).push({ date: e.date, working: !!e.working, reason: String(e.reason || '') }); }
+    });
     if (sub.baseline) warnings.push('its baseline was not copied');
     sub.resources.forEach(function (r) {
       var same = p.resources.filter(function (x) { return x.name && x.name === r.name; })[0];

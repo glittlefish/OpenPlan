@@ -68,12 +68,23 @@ OP.util = (function () {
   };
 })();
 
-/* ---------- working-day calendar (Mon-Fri, minus holidays) ---------- */
+/* ---------- working-day calendar (project working days, plus dated exceptions) ---------- */
 
-OP.Calendar = function (startDn, holidays) {
-  var hol = {};
-  (holidays || []).forEach(function (h) { var d = OP.util.parseDate(h); if (d != null) hol[d] = true; });
-  this.isWorking = function (dn) { var w = OP.util.weekday(dn); return w !== 0 && w !== 6 && !hol[dn]; };
+// cal: { workingDays: [0..6], exceptions: [{ date: 'YYYY-MM-DD', working: bool }] }
+// An exception wins over the weekly rule; without one, a day works when its weekday is listed.
+OP.Calendar = function (startDn, cal) {
+  var days = (cal && Array.isArray(cal.workingDays)) ? cal.workingDays : [1, 2, 3, 4, 5];
+  var week = {};
+  days.forEach(function (d) { if (d >= 0 && d <= 6) week[d] = true; });
+  var exc = {};
+  (cal && cal.exceptions || []).forEach(function (e) {
+    var d = OP.util.parseDate(e && e.date);
+    if (d != null) exc[d] = !!e.working;
+  });
+  this.isWorking = function (dn) {
+    if (dn in exc) return exc[dn];
+    return !!week[OP.util.weekday(dn)];
+  };
   var first = startDn;
   var guard = 0;
   while (!this.isWorking(first) && guard++ < 3660) first++;
@@ -132,6 +143,7 @@ OP.model = (function () {
       currency: 'Rs.',
       hoursPerDay: 8,
       holidays: [],
+      calendar: { workingDays: [1, 2, 3, 4, 5], workTimes: [{ start: '08:00', end: '12:00' }, { start: '13:00', end: '17:00' }], exceptions: [] },
       customFields: [],
       baseline: null,
       nextUid: 1,
@@ -182,6 +194,37 @@ OP.model = (function () {
     return r;
   }
 
+  // Working-time calendar (PRD M8): sanitize the project calendar and migrate legacy
+  // holiday lists (pre-calendar files) into dated exceptions on first load.
+  function normalizeCalendar(cal, legacyHolidays) {
+    var fresh = cal == null || typeof cal !== 'object';
+    var c = fresh ? { workingDays: [1, 2, 3, 4, 5], workTimes: [{ start: '08:00', end: '12:00' }, { start: '13:00', end: '17:00' }], exceptions: [] } : cal;
+    var days = arr(c.workingDays).map(function (d) { return Math.floor(num(d, -1)); })
+      .filter(function (d) { return d >= 0 && d <= 6; });
+    days = days.filter(function (d, i) { return days.indexOf(d) === i; }).sort(function (a, b) { return a - b; });
+    c.workingDays = days.length ? days : [1, 2, 3, 4, 5];
+    var okTime = function (s) { return /^\d{1,2}:\d{2}$/.test(String(s)) && s.split(':').length === 2 && +s.split(':')[0] < 24 && +s.split(':')[1] < 60; };
+    c.workTimes = arr(c.workTimes).filter(isObj).map(function (w) { return { start: str(w.start), end: str(w.end) }; })
+      .filter(function (w) { return okTime(w.start) && okTime(w.end) && w.end > w.start; });
+    if (!c.workTimes.length) c.workTimes = [{ start: '08:00', end: '12:00' }, { start: '13:00', end: '17:00' }];
+    var seen = {};
+    c.exceptions = arr(c.exceptions).filter(isObj).map(function (e) {
+      return { date: str(e.date), working: !!e.working, reason: str(e.reason) };
+    }).filter(function (e) { return OP.util.parseDate(e.date) != null && !seen[e.date] && (seen[e.date] = true); })
+      .sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    if (fresh) {
+      // One-time migration: legacy holidays become non-working exceptions.
+      var have = {};
+      c.exceptions.forEach(function (e) { have[e.date] = true; });
+      (legacyHolidays || []).forEach(function (h) {
+        var d = str(h);
+        if (OP.util.parseDate(d) != null && !have[d]) { have[d] = true; c.exceptions.push({ date: d, working: false, reason: 'Holiday' }); }
+      });
+      c.exceptions.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    }
+    return c;
+  }
+
   // Bring files from older versions up to date, fill missing fields and coerce every value to its expected type.
   function normalize(p) {
     var base = blank();
@@ -190,6 +233,7 @@ OP.model = (function () {
     p.budget = Math.max(0, num(p.budget, 0));
     p.hoursPerDay = Math.max(1, Math.min(24, num(p.hoursPerDay, 8)));
     p.holidays = arr(p.holidays).map(str);
+    p.calendar = normalizeCalendar(p.calendar, p.holidays);
     p.customFields = arr(p.customFields).filter(isObj).map(function (f) {
       return { id: str(f.id), name: str(f.name), type: f.type === 'number' ? 'number' : 'text' };
     });
@@ -433,7 +477,7 @@ OP.model = (function () {
 OP.schedule = function (p, opts) {
   var U = OP.util, M = OP.model;
   var tasks = p.tasks, n = tasks.length;
-  var cal = new OP.Calendar(U.parseDate(p.start) || U.todayDn(), p.holidays);
+  var cal = new OP.Calendar(U.parseDate(p.start) || U.todayDn(), p.calendar);
   var hpd = +p.hoursPerDay || 8;
   var idx = M.indexByUid(p);
   var resByUid = {};

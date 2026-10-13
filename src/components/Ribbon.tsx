@@ -251,6 +251,7 @@ function ProjectTab({ st }: { st: Store }) {
       <Big icon="info" label={<>Project<br />Information</>} onClick={() => st.openDialog('settings')} />
       <Stack>
         <Small icon="columns" label="Custom Fields" onClick={() => st.openDialog('settings')} />
+        <Small icon="clock" label="Change Working Time" onClick={() => st.openDialog('calendar')} />
         <Small icon="tree" label="WBS Chart" on={st.view === 'wbs'} onClick={() => st.setView('wbs')} />
         <Small icon="network" label="Network Diagram" on={st.view === 'network'} onClick={() => st.setView('network')} />
       </Stack>

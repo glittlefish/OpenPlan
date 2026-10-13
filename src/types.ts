@@ -89,6 +89,22 @@ export interface BoxRule {
   style: BoxStyle;
 }
 
+export interface WorkTimeRange { start: string; end: string }
+export interface CalendarException {
+  /** ISO date (no time). */
+  date: string;
+  /** true = working that day (even on a weekend); false = day off (even on a weekday). */
+  working: boolean;
+  reason: string;
+}
+export interface ProjectCalendar {
+  /** Working weekdays, 0 = Sunday … 6 = Saturday. Default [1,2,3,4,5]. */
+  workingDays: number[];
+  /** Daily work time ranges, e.g. 08:00-12:00 + 13:00-17:00. */
+  workTimes: WorkTimeRange[];
+  exceptions: CalendarException[];
+}
+
 export interface Project {
   version: number;
   name: string;
@@ -101,7 +117,10 @@ export interface Project {
   budget: number;
   currency: string;
   hoursPerDay: number;
+  /** Legacy holiday list (pre-calendar projects); migrated into calendar.exceptions on load. */
   holidays: string[];
+  /** Working-time calendar (PRD M8): weekly working days, daily work time ranges, and dated exceptions. */
+  calendar?: ProjectCalendar;
   customFields: CustomField[];
   baseline: { savedAt: string; tasks: Record<number, any> } | null;
   nextUid: number;

@@ -74,8 +74,6 @@ function SettingsDialog() {
   return (
     <Modal title="Project information" onSubmit={fd => {
       const bad: string[] = [];
-      const hol = parseDates(fd.get('holidays'), bad);
-      if (bad.length) st.toast('Ignored invalid holiday dates: ' + bad.join(', '), true);
       const cfs = fields.map(f => ({ ...f, name: f.name.trim() })).filter(f => f.name);
       st.commit(pp => {
         pp.name = String(fd.get('name')).trim() || 'Untitled project';
@@ -88,7 +86,6 @@ function SettingsDialog() {
         pp.hoursPerDay = Math.max(1, Math.min(24, +fd.get('hoursPerDay')! || 8));
         pp.budget = Math.max(0, +fd.get('budget')! || 0);
         pp.currency = String(fd.get('currency')).trim();
-        pp.holidays = hol;
         pp.customFields = cfs;
         const keep = new Set(cfs.map(f => f.id));
         pp.tasks.forEach(t => { Object.keys(t.custom).forEach(id => { if (!keep.has(id)) delete t.custom[id]; }); });
@@ -108,8 +105,7 @@ function SettingsDialog() {
         <F label="Currency symbol" name="currency" value={p.currency} />
         <F label="Hours per working day" name="hoursPerDay" value={p.hoursPerDay} type="number" min={1} max={24} step={0.5} />
       </div>
-      <label className="field"><span>Holidays (one date per line, YYYY-MM-DD) — non-working days besides weekends</span>
-        <textarea className="inp" name="holidays" rows={3} defaultValue={(p.holidays || []).join('\n')} /></label>
+      <p className="muted">Holidays and working days are managed in Project › Change Working Time.</p>
       <div className="field"><span>Custom task fields</span>
         <div className="mini-list">
           {fields.map((f, k) => (
@@ -330,6 +326,74 @@ function WbsBoxDialog() {
         {WBS_BOX_ROWS.map(r => (
           <label key={r.key} className="chk"><input type="checkbox" checked={rows.includes(r.key)} onChange={() => toggle(r.key)} />{r.label}</label>
         ))}
+      </div>
+    </Modal>
+  );
+}
+
+/* ---------- Working-time calendar (PRD M8) ---------- */
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+function CalendarDialog() {
+  const st = useStore();
+  const c = st.p.calendar || { workingDays: [1, 2, 3, 4, 5], workTimes: [{ start: '08:00', end: '12:00' }, { start: '13:00', end: '17:00' }], exceptions: [] };
+  const [days, setDays] = useState<number[]>(c.workingDays);
+  const [times, setTimes] = useState<{ start: string; end: string }[]>(c.workTimes.map(w => ({ ...w })));
+  const [excs, setExcs] = useState<{ date: string; working: boolean; reason: string }[]>(c.exceptions.map(e => ({ ...e })));
+  const toggleDay = (d: number) => setDays(ds => (ds.includes(d) ? ds.filter(x => x !== d) : ds.concat([d]).sort((a, b) => a - b)));
+  const hours = times.reduce((s, w) => s + Math.max(0, (+w.end.slice(0, 2) * 60 + +w.end.slice(3)) - (+w.start.slice(0, 2) * 60 + +w.start.slice(3))) / 60, 0);
+  return (
+    <Modal title="Change working time" okLabel="Apply" onSubmit={() => {
+      if (!days.length) { st.toast('The calendar needs at least one working day', true); return false; }
+      if (!times.length || times.some(w => !w.start || !w.end || w.end <= w.start)) { st.toast('Each work time range needs an end after its start', true); return false; }
+      if (excs.some(e => !e.date)) { st.toast('Exception dates cannot be empty', true); return false; }
+      st.commit(pp => {
+        pp.calendar = { workingDays: days, workTimes: times.map(w => ({ start: w.start, end: w.end })), exceptions: excs.map(e => ({ date: e.date, working: e.working, reason: e.reason })) };
+      });
+      st.toast('Working time updated — schedule recalculated');
+    }}>
+      <p className="muted">Working days drive the schedule: durations count working days only, and the Gantt chart shades non-working days.</p>
+      <div className="field"><span>Working days</span>
+        <div className="chk-list cal-days">
+          {DAY_NAMES.map((n, d) => <label key={d} className="chk"><input type="checkbox" checked={days.includes(d)} onChange={() => toggleDay(d)} />{n}</label>)}
+        </div>
+      </div>
+      <div className="field"><span>Work times per working day ({hours.toFixed(1)} h/day)</span>
+        <div className="mini-list">
+          {times.map((w, i) => (
+            <div className="mini-row" key={i}>
+              <input className="inp" type="time" aria-label="Start time" value={w.start}
+                onChange={e => setTimes(times.map((x, k) => (k === i ? { ...x, start: e.target.value } : x)))} />
+              <span className="muted">to</span>
+              <input className="inp" type="time" aria-label="End time" value={w.end}
+                onChange={e => setTimes(times.map((x, k) => (k === i ? { ...x, end: e.target.value } : x)))} />
+              <button type="button" className="icon-btn" aria-label="Remove time range" disabled={times.length <= 1}
+                onClick={() => setTimes(times.filter((_, k) => k !== i))}><Icon name="x" /></button>
+            </div>
+          ))}
+          <button type="button" className="btn ghost" onClick={() => setTimes(times.concat([{ start: '18:00', end: '22:00' }]))}><Icon name="plus" />Add time range</button>
+        </div>
+      </div>
+      <div className="field"><span>Exceptions (holidays and make-up work days)</span>
+        <div className="mini-list">
+          {excs.map((e, i) => (
+            <div className="mini-row" key={i}>
+              <input className="inp" type="date" aria-label="Date" value={e.date}
+                onChange={ev => setExcs(excs.map((x, k) => (k === i ? { ...x, date: ev.target.value } : x)))} />
+              <select className="sel" aria-label="Type" value={e.working ? 'work' : 'off'}
+                onChange={ev => setExcs(excs.map((x, k) => (k === i ? { ...x, working: ev.target.value === 'work' } : x)))}>
+                <option value="off">Non-working day</option>
+                <option value="work">Working day</option>
+              </select>
+              <input className="inp" aria-label="Reason" placeholder="e.g. National Day" value={e.reason}
+                onChange={ev => setExcs(excs.map((x, k) => (k === i ? { ...x, reason: ev.target.value } : x)))} />
+              <button type="button" className="icon-btn" aria-label="Remove exception"
+                onClick={() => setExcs(excs.filter((_, k) => k !== i))}><Icon name="x" /></button>
+            </div>
+          ))}
+          <button type="button" className="btn ghost" onClick={() => setExcs(excs.concat([{ date: '', working: false, reason: '' }]))}><Icon name="plus" />Add exception</button>
+        </div>
       </div>
     </Modal>
   );
@@ -586,6 +650,7 @@ export default function DialogHost() {
     case 'share': return <ShareDialog />;
     case 'confirm': return <ConfirmDialog {...dialog.props} />;
     case 'wbsbox': return <WbsBoxDialog />;
+    case 'calendar': return <CalendarDialog />;
     case 'boxstyles': return <BoxStylesDialog />;
     case 'boxcolor': return <BoxColorDialog uids={dialog.props.uids} />;
     default: return null;
