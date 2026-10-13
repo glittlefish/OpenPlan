@@ -49,6 +49,18 @@ export interface Resource {
 
 export interface CustomField { id: string; name: string; type: 'text' | 'number' }
 
+/** Free-form text box on the WBS/Network canvas (PRD M13). */
+export interface Annotation {
+  id: string;
+  view: 'wbs' | 'network';                    // only shown on its own view
+  mode: 'free' | 'task' | 'group';             // free: absolute; task: follows a task; group: wraps a set of tasks
+  text: string;
+  x: number; y: number; w: number; h: number;  // free: absolute SVG position and size
+  dx: number; dy: number;                      // task: offset from the bound task's box
+  taskUid: number | null;                       // task: the bound task
+  uids: number[];                               // group: the wrapped tasks
+}
+
 /** Visual style attributes for chart boxes (WBS / Network). Unset keys fall through to lower-priority rules. */
 export interface BoxStyle {
   borderColor?: string;                       // hex color or CSS var token
@@ -97,6 +109,8 @@ export interface Project {
   resources: Resource[];
   /** Network diagram: manual node positions (uid -> SVG coordinates), empty when layout is automatic. */
   netPos?: Record<number, { x: number; y: number }>;
+  /** WBS/Network chart: free text box annotations (PRD M13). */
+  annotations?: Annotation[];
   /** WBS/Network chart: box style rules, ordered by priority (first entries evaluated first). */
   boxRules?: BoxRule[];
 }

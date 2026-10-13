@@ -137,6 +137,7 @@ OP.model = (function () {
       nextUid: 1,
       tasks: [],
       resources: [],
+      annotations: [],
       boxRules: builtinBoxRules()
     };
   }
@@ -259,6 +260,20 @@ OP.model = (function () {
       if (isObj(q) && isFinite(+q.x) && isFinite(+q.y)) good[t.uid] = { x: +q.x, y: +q.y };
     });
     p.netPos = good;
+    // Free text boxes (PRD M13): sanitize and keep only entries that can still render.
+    p.annotations = arr(p.annotations).filter(isObj).slice(0, 200).map(function (a) {
+      return {
+        id: str(a.id) || 'a' + Math.random().toString(36).slice(2, 8),
+        view: a.view === 'network' ? 'network' : 'wbs',
+        mode: a.mode === 'task' || a.mode === 'group' ? a.mode : 'free',
+        text: str(a.text),
+        x: Math.max(0, num(a.x, 0)), y: Math.max(0, num(a.y, 0)),
+        w: Math.max(40, num(a.w, 160)), h: Math.max(24, num(a.h, 60)),
+        dx: num(a.dx, 0), dy: num(a.dy, 0),
+        taskUid: uidOf({ uid: a.taskUid }) || null,
+        uids: arr(a.uids).map(Number).filter(function (u) { return u > 0 && u === Math.floor(u); })
+      };
+    });
     // Box style rules (PRD M14): sanitize, cap at 50, keep the built-ins present for older files.
     p.boxRules = arr(p.boxRules).filter(isObj).slice(0, 50).map(sanitizeBoxRule);
     var haveB = {};

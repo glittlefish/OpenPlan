@@ -186,6 +186,11 @@ img.logo { object-fit: contain; }
 .menu .label { padding: 5px 10px 2px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .menu-note { padding: 6px 10px; font-size: var(--fs-xs); color: var(--text-muted); max-width: 280px; }
 .ctx-menu { position: fixed; }
+
+/* Free text box annotations (PRD M13): the inline editor overlays the canvas. */
+.anno-editor { position: fixed; z-index: 80; border: 1.5px solid var(--accent); background: var(--surface); color: var(--text);
+  font: 12px/1.4 'Segoe UI', Tahoma, Arial, sans-serif; padding: 6px 8px; border-radius: 4px; box-shadow: var(--shadow-lg);
+  outline: none; resize: none; margin: 0; }
 .ctx-backdrop { position: fixed; inset: 0; z-index: 55; }
 .wnode.drop-target rect { stroke: var(--accent); stroke-width: 2; }
 .wnode.dragging { opacity: 0.45; }

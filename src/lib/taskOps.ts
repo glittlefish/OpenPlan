@@ -1,6 +1,6 @@
 import OP from '../core';
 import { ask, S, focusKey, rowByUid } from '../store';
-import type { BoxRule, BoxStyle, Project, Task } from '../types';
+import type { Annotation, BoxRule, BoxStyle, Project, Task } from '../types';
 
 const U = OP.util, M = OP.model;
 
@@ -458,4 +458,30 @@ export function setCustomStyle(uids: number[], style: BoxStyle | null) {
       else t.customStyle = null;
     });
   });
+}
+
+// ---- Free text box annotations (PRD M13) ----
+
+// Insert a text box on the given view and open its inline editor right away.
+export function addAnnotation(view: 'wbs' | 'network', x: number, y: number): string {
+  const id = 'a' + Math.random().toString(36).slice(2, 8);
+  S().commit(p => {
+    if (!p.annotations) p.annotations = [];
+    p.annotations.push({ id, view, mode: 'free', text: '', x: Math.round(x), y: Math.round(y), w: 160, h: 60, dx: 0, dy: 0, taskUid: null, uids: [] });
+  });
+  S().setUI({ annoSel: id, annoEdit: id });
+  return id;
+}
+
+export function updateAnnotation(id: string, patch: Partial<Annotation>) {
+  S().commit(p => {
+    const a = (p.annotations || []).find(x => x.id === id);
+    if (a) Object.assign(a, patch);
+  });
+}
+
+export function removeAnnotation(id: string) {
+  const st = S();
+  st.commit(p => { p.annotations = (p.annotations || []).filter(x => x.id !== id); });
+  if (st.annoSel === id || st.annoEdit === id) st.setUI({ annoSel: null, annoEdit: null });
 }

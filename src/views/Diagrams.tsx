@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import OP from '../core';
 import { useApp, useStore, S } from '../store';
 import { runAction, viewSvgString } from '../lib/actions';
-import { addLink, addTaskNear, copyTasks, hasClip, moveSubtreeTo, pasteTasks, removeNetPos, resetNetLayout, setCustomStyle, setNetPos } from '../lib/taskOps';
+import { addAnnotation, addLink, addTaskNear, copyTasks, hasClip, moveSubtreeTo, pasteTasks, removeAnnotation, removeNetPos, resetNetLayout, setCustomStyle, setNetPos, updateAnnotation } from '../lib/taskOps';
 import Icon from '../components/Icon';
 import ContextMenu, { type CtxItem } from '../components/ContextMenu';
 
@@ -13,13 +13,17 @@ import ContextMenu, { type CtxItem } from '../components/ContextMenu';
 // dragMove (WBS): pointer-drag a node onto another node to move that task's subtree.
 // dragLink (Network): pointer-drag a node onto another node to create a dependency.
 // dragPos (Network): dropping a dragged node on empty canvas moves it there (netPos override).
+// annoView ('wbs'|'network'): enables free text box annotations — drag to move, corner to
+// resize, double-click to edit inline, Delete to remove, right-click for a context menu.
 // onNodeContextMenu: right-click on a node (uid) or on empty canvas (null) at the cursor position.
-function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMove, dragLink, dragPos }: {
+function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, onAnnoContextMenu, dragMove, dragLink, dragPos, annoView }: {
   svg: string; nodeClass?: string; openMode?: 'drawer' | 'dialog';
   onNodeContextMenu?: (uid: number | null, x: number, y: number) => void;
+  onAnnoContextMenu?: (id: string, x: number, y: number) => void;
   dragMove?: (uid: number, targetUid: number) => boolean;
   dragLink?: (fromUid: number, toUid: number) => boolean;
   dragPos?: (uid: number, x: number, y: number) => boolean;
+  annoView?: 'wbs' | 'network';
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const zoom = useStore(s => s.netZoom);
@@ -61,7 +65,7 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMo
     let panning = false, px = 0, py = 0;
     const onDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
-      if ((e.target as Element).closest('g[data-uid]')) return; // nodes: click / drag, not pan
+      if ((e.target as Element).closest('g[data-uid], .anno')) return; // nodes and text boxes: click / drag, not pan
       panning = true; px = e.clientX; py = e.clientY;
       el.classList.add('panning');
       el.style.userSelect = 'none';
@@ -258,6 +262,138 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMo
       window.removeEventListener('pointerup', onUp);
     };
   }, [linkEnabled, nodeClass, svg]);
+  // ---- Free text box annotations (PRD M13) ----
+  const annoSel = useStore(s => s.annoSel);
+  const annoEdit = useStore(s => s.annoEdit);
+  // Selection highlight: the SVG markup does not know the selection, so toggle a class.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.querySelectorAll('.anno').forEach(g => g.classList.toggle('sel', (g as SVGElement).dataset.id === annoSel));
+  }, [annoSel, svg]);
+  // Drag the body to move, drag the corner handle to resize. Live DOM preview,
+  // committed to the store on release (one undoable commit per drag).
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !annoView) return;
+    let g: SVGElement | null = null, box: SVGRectElement | null = null, handle: SVGRectElement | null = null;
+    let id = '', mode: '' | 'move' | 'resize' = '', sx = 0, sy = 0, ox = 0, oy = 0, ow = 0, oh = 0, moved = false, ldx = 0, ldy = 0;
+    const kOf = () => {
+      const s = el.querySelector('svg');
+      if (!s) return 1;
+      return s.getBoundingClientRect().width / (+s.dataset.w! || 1);
+    };
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      const t = e.target as Element;
+      const h = t.closest('.anno-handle');
+      const a = (h ? h.closest('.anno') : t.closest('.anno')) as SVGElement | null;
+      if (!a) return;
+      const ann = S().p.annotations?.find(x => x.id === a.dataset.id);
+      if (!ann) return;
+      if (ann.mode === 'group' && !h) return; // group boxes auto-fit their tasks; no move
+      g = a; id = ann.id; mode = h ? 'resize' : 'move';
+      box = a.querySelector('.anno-box'); handle = a.querySelector('.anno-handle');
+      sx = e.clientX; sy = e.clientY;
+      ox = +box!.getAttribute('x')!; oy = +box!.getAttribute('y')!;
+      ow = +box!.getAttribute('width')!; oh = +box!.getAttribute('height')!;
+      moved = false; ldx = 0; ldy = 0;
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!mode || !g) return;
+      if (!moved) {
+        if (Math.hypot(e.clientX - sx, e.clientY - sy) < 5) return; // still a click
+        moved = true;
+        el.style.userSelect = 'none';
+      }
+      e.preventDefault();
+      const k = kOf();
+      ldx = (e.clientX - sx) / k; ldy = (e.clientY - sy) / k;
+      if (mode === 'move') g.setAttribute('transform', 'translate(' + ldx + ',' + ldy + ')');
+      else {
+        const w = Math.max(40, ow + ldx), h = Math.max(24, oh + ldy);
+        box!.setAttribute('width', String(w)); box!.setAttribute('height', String(h));
+        handle?.setAttribute('x', String(ox + w - 9));
+        handle?.setAttribute('y', String(oy + h - 9));
+      }
+    };
+    const onUp = () => {
+      if (!mode || !g) return;
+      if (moved) {
+        suppressUntil.current = Date.now() + 400; // swallow the click that follows this drag
+        const ann = S().p.annotations?.find(x => x.id === id);
+        if (ann && mode === 'move') {
+          g.removeAttribute('transform');
+          if (ann.mode === 'task') updateAnnotation(id, { dx: (ann.dx || 0) + ldx, dy: (ann.dy || 0) + ldy });
+          else updateAnnotation(id, { x: Math.max(0, Math.round(ox + ldx)), y: Math.max(0, Math.round(oy + ldy)) });
+        } else if (ann && mode === 'resize') {
+          updateAnnotation(id, { w: Math.max(40, Math.round(ow + ldx)), h: Math.max(24, Math.round(oh + ldy)) });
+        }
+        S().setUI({ annoSel: id });
+      }
+      mode = ''; g = null; box = null; handle = null; moved = false;
+    };
+    el.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      el.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [annoView, svg]);
+  // Double-click (or creation) opens a textarea over the box; Enter commits, Escape cancels.
+  useEffect(() => {
+    if (!annoEdit || !annoView) return;
+    const el = ref.current;
+    const svgEl = el?.querySelector('svg') as SVGSVGElement | null;
+    const g = el?.querySelector('.anno[data-id="' + annoEdit + '"]');
+    const a = S().p.annotations?.find(x => x.id === annoEdit);
+    if (!el || !svgEl || !g || !a) { S().setUI({ annoEdit: null }); return; }
+    const r = svgEl.getBoundingClientRect(), k = r.width / (+svgEl.dataset.w! || 1);
+    const box = (g as Element).querySelector('.anno-box') as SVGRectElement;
+    const ax = +box.getAttribute('x')!, ay = +box.getAttribute('y')!, aw = +box.getAttribute('width')!, ah = +box.getAttribute('height')!;
+    const ta = document.createElement('textarea');
+    ta.className = 'anno-editor';
+    ta.value = a.text;
+    ta.style.left = (r.left + ax * k) + 'px';
+    ta.style.top = (r.top + ay * k) + 'px';
+    ta.style.width = Math.max(120, aw * k) + 'px';
+    ta.style.height = Math.max(40, ah * k) + 'px';
+    let done = false;
+    const close = (save: boolean) => {
+      if (done) return;
+      done = true;
+      ta.remove();
+      if (save) updateAnnotation(annoEdit, { text: ta.value });
+      S().setUI({ annoEdit: null });
+    };
+    ta.addEventListener('blur', () => close(true));
+    ta.addEventListener('keydown', ev => {
+      ev.stopPropagation(); // keep global shortcuts away while typing
+      if (ev.key === 'Escape') { ev.preventDefault(); close(false); }
+      else if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); close(true); }
+    });
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    return () => ta.remove();
+  }, [annoEdit, annoView]);
+  // Delete removes the selected text box (unless typing in a field).
+  useEffect(() => {
+    if (!annoView) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const st = S();
+      if (!st.annoSel) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      e.preventDefault();
+      removeAnnotation(st.annoSel);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [annoView]);
   const uidOf = (target: EventTarget): number | null => {
     if (!nodeClass) return null;
     const g = (target as Element).closest('.' + nodeClass) as SVGGElement | null;
@@ -267,23 +403,48 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMo
     if (openMode === 'dialog') S().openDialog('task', { uid });
     else S().setUI({ drawer: true });
   };
+  const annoOf = (target: EventTarget): SVGElement | null => {
+    if (!annoView) return null;
+    return (target as Element).closest('.anno') as SVGElement | null;
+  };
   return (
     <div className="canvas" id="canvas" ref={ref} dangerouslySetInnerHTML={{ __html: svg }}
       onClick={e => {
         if (suppressed()) return;
+        const anno = annoOf(e.target);
+        if (anno) { S().setUI({ annoSel: anno.dataset.id! }); return; }
         const uid = uidOf(e.target);
-        if (uid == null) return;
+        if (uid == null) {
+          if (annoView && S().annoSel) S().setUI({ annoSel: null });
+          return;
+        }
+        // Ctrl/Cmd+click toggles membership in the selection (for grouping, batch ops).
+        if (e.ctrlKey || e.metaKey) {
+          const st = S();
+          st.select(st.sel.includes(uid) ? st.sel.filter(u => u !== uid) : st.sel.concat([uid]), uid);
+          return;
+        }
         S().select([uid], uid);
         if (openMode === 'drawer') openDetails(uid);
       }}
       onDoubleClick={e => {
         if (suppressed()) return;
+        const anno = annoOf(e.target);
+        if (anno) { S().setUI({ annoSel: anno.dataset.id!, annoEdit: anno.dataset.id! }); return; }
         const uid = uidOf(e.target);
         if (uid == null) return;
         S().select([uid], uid);
         if (openMode === 'dialog') openDetails(uid);
       }}
       onContextMenu={e => {
+        const anno = annoOf(e.target);
+        if (anno) {
+          if (!onAnnoContextMenu) return;
+          e.preventDefault();
+          S().setUI({ annoSel: anno.dataset.id! });
+          onAnnoContextMenu(anno.dataset.id!, e.clientX, e.clientY);
+          return;
+        }
         if (!onNodeContextMenu) return;
         e.preventDefault();
         const uid = uidOf(e.target);
@@ -305,6 +466,58 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMo
 // Manual box coloring applies to the whole selection when the right-clicked node is part of it.
 function styleTargets(st: { sel: number[] }, uid: number): number[] {
   return st.sel.includes(uid) ? st.sel : [uid];
+}
+
+// ---- Free text box annotations (PRD M13): view-layer helpers ----
+
+// Insert a text box: at the given screen point, or centered in the visible canvas.
+function addTextBoxAt(view: 'wbs' | 'network', clientX?: number, clientY?: number) {
+  const box = document.getElementById('canvas');
+  const svgEl = box?.querySelector('svg') as SVGSVGElement | null;
+  if (!box || !svgEl) return;
+  const r = svgEl.getBoundingClientRect(), k = r.width / (+svgEl.dataset.w! || 1);
+  const x = clientX != null ? (clientX - r.left) / k : (box.scrollLeft + box.clientWidth / 2) / k;
+  const y = clientY != null ? (clientY - r.top) / k : (box.scrollTop + box.clientHeight / 2) / k;
+  addAnnotation(view, Math.max(10, x - 80), Math.max(10, y - 30));
+}
+
+// Rendered SVG position of an annotation / a node, read from the live DOM.
+function annoDomPos(id: string) {
+  const box = document.querySelector('#canvas .anno[data-id="' + id + '"] .anno-box') as SVGRectElement | null;
+  return box ? { x: +box.getAttribute('x')!, y: +box.getAttribute('y')! } : null;
+}
+function nodeDomPos(uid: number) {
+  const g = document.querySelector('#canvas g[data-uid="' + uid + '"]');
+  const box = (g?.querySelector('rect.node, rect.wbs1, rect.wbs2') || g?.querySelector('rect')) as SVGRectElement | null;
+  return box ? { x: +box.getAttribute('x')!, y: +box.getAttribute('y')! } : null;
+}
+
+// Bind a text box to a task: it keeps its current on-screen offset and follows the task.
+function bindAnnoTask(id: string, uid: number) {
+  const a = annoDomPos(id), b = nodeDomPos(uid);
+  if (!a || !b) return;
+  updateAnnotation(id, { mode: 'task', taskUid: uid, dx: a.x - b.x, dy: a.y - b.y });
+}
+
+// Release a binding: the box stays exactly where it is now, as a free box.
+function freeAnno(id: string) {
+  const a = annoDomPos(id);
+  if (a) updateAnnotation(id, { mode: 'free', x: Math.round(a.x), y: Math.round(a.y) });
+}
+
+// Context menu for a text box, shared by the WBS and Network views.
+function annoCtxItems(st: { sel: number[]; p: { annotations?: any[] } }, id: string): CtxItem[] {
+  const a = st.p.annotations?.find(x => x.id === id);
+  if (!a) return [];
+  return [
+    { label: 'Edit text', icon: 'note', onClick: () => S().setUI({ annoSel: id, annoEdit: id }) },
+    { hr: true },
+    { label: 'Bind to selected task', icon: 'link', disabled: st.sel.length !== 1, onClick: () => bindAnnoTask(id, st.sel[0]) },
+    { label: 'Group selected tasks', icon: 'grid', disabled: !st.sel.length, onClick: () => updateAnnotation(id, { mode: 'group' as const, uids: [...st.sel] }) },
+    { label: 'Free position', icon: 'pin', disabled: a.mode === 'free', onClick: () => freeAnno(id) },
+    { hr: true },
+    { label: 'Delete text box', icon: 'trash', onClick: () => removeAnnotation(id) },
+  ];
 }
 
 function zoomBy(kind: 'in' | 'out' | 'fit') {  const st = S();
@@ -334,6 +547,7 @@ export function NetworkView() {
   const tops = st.s.rows.filter((r: any) => r.summary && r.task.level === 1);
   const [addMenu, setAddMenu] = useState(false);
   const [ctx, setCtx] = useState<{ uid: number | null; x: number; y: number } | null>(null);
+  const [actx, setActx] = useState<{ id: string; x: number; y: number } | null>(null);
   const addWrap = useRef<HTMLDivElement>(null);
   const selUid = st.sel.length ? st.sel[st.sel.length - 1] : null;
   useEffect(() => {
@@ -343,6 +557,7 @@ export function NetworkView() {
     return () => window.removeEventListener('pointerdown', close);
   }, [addMenu]);
   const ctxItems = (uid: number | null): CtxItem[] => uid == null ? [
+    { label: 'Add text box', icon: 'note', onClick: () => addTextBoxAt('network', ctx?.x, ctx?.y) },
     { label: 'Reset layout', icon: 'fit', onClick: () => resetNetLayout() },
   ] : [
     { label: 'Insert task after', icon: 'plus', onClick: () => addTaskNear(uid, 'after') },
@@ -381,14 +596,18 @@ export function NetworkView() {
         </div>
         <button className="btn" title="Clear manual node positions and restore the automatic layout" onClick={() => resetNetLayout()}><Icon name="fit" />Reset layout</button>
         <button className="btn" onClick={() => st.openDialog('boxstyles')}><Icon name="sparkle" />Box styles</button>
+        <button className="btn" title="Insert a text box" onClick={() => addTextBoxAt('network')}><Icon name="note" />Text box</button>
         <span className="spacer" /><ZoomTools />
       </div>
       {svg ? <Canvas svg={svg} nodeClass="nnode" openMode="dialog"
         dragLink={(from, to) => addLink(from, to)}
         dragPos={(uid, x, y) => setNetPos(uid, x, y)}
-        onNodeContextMenu={(uid, x, y) => setCtx({ uid, x, y })} />
+        annoView="network"
+        onNodeContextMenu={(uid, x, y) => setCtx({ uid, x, y })}
+        onAnnoContextMenu={(id, x, y) => setActx({ id, x, y })} />
         : <Empty title="Nothing to show" text="Add tasks in the Gantt view first." />}
       {ctx && <ContextMenu x={ctx.x} y={ctx.y} items={ctxItems(ctx.uid)} onClose={() => setCtx(null)} />}
+      {actx && <ContextMenu x={actx.x} y={actx.y} items={annoCtxItems(st, actx.id)} onClose={() => setActx(null)} />}
     </div>
   );
 }
@@ -400,7 +619,8 @@ export function WbsView() {
   const levels: number[] = [];
   for (let l = 2; l <= Math.max(2, maxLv); l++) levels.push(l);
   const [addMenu, setAddMenu] = useState(false);
-  const [ctx, setCtx] = useState<{ uid: number; x: number; y: number } | null>(null);
+  const [ctx, setCtx] = useState<{ uid: number | null; x: number; y: number } | null>(null);
+  const [actx, setActx] = useState<{ id: string; x: number; y: number } | null>(null);
   const addWrap = useRef<HTMLDivElement>(null);
   const selUid = st.sel.length ? st.sel[st.sel.length - 1] : null;
   useEffect(() => {
@@ -428,7 +648,9 @@ export function WbsView() {
     });
     if (deep > st.wbsDepth) st.setUI({ wbsDepth: deep });
   };
-  const ctxItems = (uid: number): CtxItem[] => [
+  const ctxItems = (uid: number | null): CtxItem[] => uid == null ? [
+    { label: 'Add text box', icon: 'note', onClick: () => addTextBoxAt('wbs', ctx?.x, ctx?.y) },
+  ] : [
     { label: 'Insert task before', icon: 'plus', onClick: () => addTaskNear(uid, 'before') },
     { label: 'Insert task after', icon: 'plus', onClick: () => addTaskNear(uid, 'after') },
     { label: 'Add subtask', icon: 'indent', onClick: () => addChild(uid) },
@@ -456,13 +678,17 @@ export function WbsView() {
         <div className="seg">{levels.map(l => <button key={l} className={Math.min(st.wbsDepth, maxLv) === l ? 'on' : ''} onClick={() => st.setUI({ wbsDepth: l })}>{l}</button>)}</div>
         <button className="btn" onClick={() => st.openDialog('wbsbox')}><Icon name="layers" />Box content</button>
         <button className="btn" onClick={() => st.openDialog('boxstyles')}><Icon name="sparkle" />Box styles</button>
+        <button className="btn" title="Insert a text box" onClick={() => addTextBoxAt('wbs')}><Icon name="note" />Text box</button>
         <span className="spacer" /><ZoomTools />
       </div>
       {svg ? <Canvas svg={svg} nodeClass="wnode" openMode="dialog"
-        onNodeContextMenu={(uid, x, y) => setCtx(uid == null ? null : { uid, x, y })}
+        onNodeContextMenu={(uid, x, y) => setCtx({ uid, x, y })}
+        onAnnoContextMenu={(id, x, y) => setActx({ id, x, y })}
+        annoView="wbs"
         dragMove={(uid, target) => moveSubtreeTo(uid, target)} />
         : <Empty title="No work items yet" text="Build your task outline in the Gantt view; indented tasks become WBS levels." />}
       {ctx && <ContextMenu x={ctx.x} y={ctx.y} items={ctxItems(ctx.uid)} onClose={() => setCtx(null)} />}
+      {actx && <ContextMenu x={actx.x} y={actx.y} items={annoCtxItems(st, actx.id)} onClose={() => setActx(null)} />}
     </div>
   );
 }

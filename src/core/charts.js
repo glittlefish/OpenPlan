@@ -23,7 +23,11 @@ OP.charts = (function () {
     '.cbar{fill:var(--bar)}.cline{stroke:var(--bar);stroke-width:2;fill:none}.bud{stroke:var(--critical);stroke-width:1.5;stroke-dasharray:6 4}' +
     '.hit{fill:transparent}.hit:hover{fill:var(--accent);fill-opacity:.12}.grp{fill:var(--surface-3)}.bl{fill:var(--baseline)}.bar.late{fill:var(--warn)}' +
     '.gsplit{stroke:var(--bar);stroke-width:1.5;stroke-dasharray:2 3}.dl{fill:var(--good);stroke:var(--good);stroke-width:1.5}.dl.miss{fill:var(--critical);stroke:var(--critical)}' +
-    '.gstat{stroke:var(--warn);stroke-width:1.5}.gstat-t{fill:var(--warn)}';
+    '.gstat{stroke:var(--warn);stroke-width:1.5}.gstat-t{fill:var(--warn)}' +
+    '.anno{cursor:move}.anno.group{cursor:default}.anno-box{fill:var(--surface);stroke:var(--border-strong);stroke-width:1}' +
+    '.anno.group .anno-box{fill:none;stroke:var(--accent);stroke-width:1.5;stroke-dasharray:6 4}' +
+    '.anno.sel .anno-box{stroke:var(--accent);stroke-width:2}.anno-handle{fill:var(--accent);opacity:0;cursor:nwse-resize}' +
+    '.anno:hover .anno-handle{opacity:.65}';
 
   function svgOpen(w, h, cls) {
     return '<svg xmlns="http://www.w3.org/2000/svg" class="' + (cls || '') + '" width="' + Math.ceil(w) + '" height="' + Math.ceil(h) +
@@ -155,6 +159,76 @@ OP.charts = (function () {
     var rules = (p && p.boxRules) || [];
     for (var i = 0; i < rules.length; i++) if (rules[i].id === 'b-critical') return rules[i].enabled !== false;
     return true;
+  }
+
+  /* ---------- Free text box annotations (PRD M13) ---------- */
+
+  var GPAD = 10; // padding between a group box and the nodes it wraps
+
+  // Where one annotation renders. boxes: uid -> {x,y,w,h} of the node boxes.
+  // Returns null when it cannot place (bound task missing, group empty, …).
+  function annoPos(a, boxes) {
+    if (a.mode === 'task') {
+      var b = boxes ? boxes[a.taskUid] : null;
+      if (!b) return null;
+      return { x: b.x + (a.dx || 0), y: b.y + (a.dy || 0), w: a.w, h: a.h };
+    }
+    if (a.mode === 'group') {
+      if (!boxes) return null;
+      var bs = (a.uids || []).map(function (u) { return boxes[u]; }).filter(Boolean);
+      if (!bs.length) return null;
+      var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      bs.forEach(function (q) {
+        x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y);
+        x1 = Math.max(x1, q.x + q.w); y1 = Math.max(y1, q.y + q.h);
+      });
+      var lab = a.text ? 16 : 0; // a label strip above the wrapped nodes
+      return { x: x0 - GPAD, y: y0 - GPAD - lab, w: x1 - x0 + GPAD * 2, h: y1 - y0 + GPAD * 2 + lab };
+    }
+    return { x: a.x, y: a.y, w: a.w, h: a.h };
+  }
+
+  // Right/bottom extents of the annotations of one view, for growing the canvas.
+  // boxes may be null (WBS pre-scan): group boxes then stay inside the node area.
+  function annoExtent(o, view, boxes) {
+    var list = (o.p && o.p.annotations) || [], x1 = 0, y1 = 0, any = false;
+    list.forEach(function (a) {
+      if (a.view !== view) return;
+      var q = annoPos(a, boxes);
+      if (!q) return;
+      any = true;
+      x1 = Math.max(x1, q.x + q.w); y1 = Math.max(y1, q.y + q.h);
+    });
+    return any ? { x: x1, y: y1 } : null;
+  }
+
+  // SVG markup for all annotations of one view. Drawn after the nodes; group
+  // boxes use a transparent fill so nothing underneath is hidden.
+  function annotationsSvg(o, view, boxes) {
+    var list = (o.p && o.p.annotations) || [], out = [];
+    list.forEach(function (a) {
+      if (a.view !== view) return;
+      var q = annoPos(a, boxes);
+      if (!q) return;
+      var g = '<g class="anno' + (a.mode === 'group' ? ' group' : '') + '" data-id="' + esc(a.id) + '">';
+      g += '<rect class="anno-box" x="' + q.x + '" y="' + q.y + '" width="' + q.w + '" height="' + q.h + '" rx="4"/>';
+      if (a.mode === 'group') {
+        if (a.text) g += '<text class="b sm" x="' + (q.x + 6) + '" y="' + (q.y + 12) + '">' + esc(trunc(a.text, 48)) + '</text>';
+      } else {
+        if (a.text) {
+          var chars = Math.max(8, Math.floor((q.w - 14) / 6.2));
+          var lines = wrap(a.text, chars, Math.max(1, Math.floor((q.h - 10) / 14)));
+          lines.forEach(function (ln, k) {
+            g += '<text x="' + (q.x + 8) + '" y="' + (q.y + 18 + k * 14) + '">' + esc(ln) + '</text>';
+          });
+        } else {
+          g += '<text class="m sm" x="' + (q.x + 8) + '" y="' + (q.y + 18) + '">Double-click to edit</text>';
+        }
+        g += '<rect class="anno-handle" x="' + (q.x + q.w - 9) + '" y="' + (q.y + q.h - 9) + '" width="9" height="9"/>';
+      }
+      out.push(g + '</g>');
+    });
+    return out.join('');
   }
 
 
@@ -395,6 +469,11 @@ OP.charts = (function () {
       W = Math.max(W, q.x + NW + PAD);
       H = Math.max(H, q.y + NH + PAD);
     });
+    // Free text boxes (PRD M13): drawn after the nodes; the canvas grows to keep them visible.
+    var nBoxes = {};
+    rows.forEach(function (r) { nBoxes[r.task.uid] = { x: at[r.i].x, y: at[r.i].y, w: NW, h: NH }; });
+    var nAnnoExt = annoExtent(o, 'network', nBoxes);
+    if (nAnnoExt) { W = Math.max(W, nAnnoExt.x + 20); H = Math.max(H, nAnnoExt.y + 20); }
     var midY = PAD + LEG + (maxRows * NH + (maxRows - 1) * GY) / 2;
     var startN = { x: PAD, y: midY }, endN = { x: W - PAD - SW, y: midY };
 
@@ -445,6 +524,7 @@ OP.charts = (function () {
         slack: U.num(r.slack) + 'd', lf: o.dates ? U.fmt(s.cal.date(Math.max(Math.ceil(r.lf) - 1, 0))) : v(r.lf), crit: o.critical && r.critical
       }, bs) + '</g>');
     });
+    h.push(annotationsSvg(o, 'network', nBoxes));
     h.push('</svg>');
     return { svg: h.join(''), width: W, height: H };
 
@@ -515,6 +595,11 @@ OP.charts = (function () {
     var W = PAD * 2 + n * CW + (n - 1) * GX;
     var maxCol = Math.max.apply(null, colH.concat([0]));
     var H = PAD * 2 + RH + 22 + 22 + 44 + 10 + maxCol + 10;
+    // Free text boxes (PRD M13): free/task boxes grow the canvas; group boxes wrap nodes
+    // and stay inside the node area, so they need no pre-scan (boxes are not known yet).
+    var wAnnoExt = annoExtent(o, 'wbs', null);
+    if (wAnnoExt) { W = Math.max(W, wAnnoExt.x + 20); H = Math.max(H, wAnnoExt.y + 20); }
+    var pos = {}; // uid -> rendered box, for task-bound and group annotations
     var h = [svgOpen(W, H, 'wbs-svg')];
     var rootW = Math.min(W - PAD * 2, 320), rx = (W - rootW) / 2, ry = PAD;
     h.push('<rect class="wbs0" x="' + rx + '" y="' + ry + '" width="' + rootW + '" height="' + RH + '"/>');
@@ -539,10 +624,12 @@ OP.charts = (function () {
         yy += nh + 10;
       });
     });
+    h.push(annotationsSvg(o, 'wbs', pos));
     h.push('</svg>');
     return { svg: h.join('') };
 
     function box(x, y, w, r, cls, nh) {
+      pos[r.task.uid] = { x: x, y: y, w: w, h: nh };
       var bs = boxStyleFor(o, 'wbs', r), sp = boxStyleParts(bs), tx = sp ? sp.text : '';
       var maxc = Math.floor((w - 16) / 6.6), lines = wrap(r.task.name, maxc, 2), out = [];
       out.push('<g class="wnode" data-uid="' + esc(r.task.uid) + '" tabindex="0" role="button" aria-label="' + esc(r.wbs + ' ' + r.task.name) + '">' + shadowRect(bs, x, y, w, nh) + '<rect class="' + cls + (o.selected && o.selected[r.task.uid] ? ' sel' : '') + '"' + (sp ? sp.rect : '') + ' x="' + x + '" y="' + y + '" width="' + w + '" height="' + nh + '"/>');
