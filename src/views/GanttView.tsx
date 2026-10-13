@@ -371,6 +371,7 @@ export default function GanttView() {
     { label: 'Insert task before', icon: 'plus', onClick: () => { const u = ops.addTaskNear(uid, 'before'); if (u) focusKey(u + ':name'); } },
     { label: 'Insert task after', icon: 'plus', onClick: () => { const u = ops.addTaskNear(uid, 'after'); if (u) focusKey(u + ':name'); } },
     { label: 'Fill down (Ctrl+D)', icon: 'down', onClick: () => ops.fillDown() },
+    ...(st.sel.length > 1 ? [{ label: `Batch edit ${st.sel.length} tasks…`, icon: 'settings', onClick: () => st.openDialog('batchedit', { uids: st.sel }) }] : []),
   ];
 
   const g = useMemo(() => C.gantt({

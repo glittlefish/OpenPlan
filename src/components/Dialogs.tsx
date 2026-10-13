@@ -304,6 +304,121 @@ function TaskDialog({ uid }: { uid: number }) {
   );
 }
 
+/* ---------- Multi-task batch edit (PRD M2-7) ---------- */
+
+const MULTI = '(multiple values)';
+
+function BatchEditDialog({ uids }: { uids: number[] }) {
+  const st = useStore();
+  const M = OP.model;
+  const tasks = st.p.tasks.filter(t => uids.includes(t.uid));
+  const rowBy = useMemo(() => new Map(st.s.rows.map((r: Row) => [r.task.uid, r])), [st.s.rows]);
+  // The shared value of a field, or null when the selected tasks differ.
+  const common = (get: (t: typeof tasks[number]) => string): string | null => {
+    const v = get(tasks[0]);
+    return tasks.every(t => get(t) === v) ? v : null;
+  };
+  const init = {
+    duration: common(t => M.fmtDuration(t.duration)),
+    start: common(t => (t.constraint === 'SNET' ? t.constraintDate : '')),
+    finish: common(t => (t.constraint === 'FNLT' ? t.constraintDate : '')),
+    percent: common(t => String(t.percent || 0)),
+    priority: common(t => String(t.priority)),
+    type: common(t => t.type),
+    milestone: common(t => (t.milestone ? 'yes' : 'no')),
+    res: '',
+    notes: common(t => t.notes || ''),
+  };
+  const [f, setF] = useState<Record<string, string>>(Object.fromEntries(Object.entries(init).map(([k, v]) => [k, v ?? ''])));
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const set = (k: string, v: string) => { setF(o => ({ ...o, [k]: v })); setTouched(o => ({ ...o, [k]: true })); };
+  // Fields the tasks disagree on start empty with a "(multiple values)" placeholder.
+  const ph = (k: keyof typeof init) => (init[k] == null ? MULTI : '');
+
+  const save = () => {
+    let changed = 0, skipped = 0, invalid = false;
+    st.commit(p => {
+      tasks.forEach(t => {
+        const x = ops.findTask(p, t.uid);
+        const summary = !!rowBy.get(t.uid)?.summary;
+        // Scheduling fields (duration, start/finish constraints, assignments) are computed
+        // for summary tasks, so they are skipped and reported in the toast.
+        const sched = (apply: () => void) => { if (summary) skipped++; else { apply(); changed++; } };
+        if (touched.duration) sched(() => {
+          const d = M.parseDuration(f.duration, p.hoursPerDay);
+          if (d == null) { invalid = true; return; }
+          ops.setDuration(p, x, d);
+        });
+        if (touched.start && f.start) sched(() => { x.constraint = 'SNET'; x.constraintDate = f.start; });
+        if (touched.finish && f.finish) sched(() => { x.constraint = 'FNLT'; x.constraintDate = f.finish; });
+        if (touched.percent) { x.percent = Math.max(0, Math.min(100, Math.round(+f.percent || 0))); changed++; }
+        if (touched.priority) { x.priority = Math.max(0, Math.min(1000, Math.round(+f.priority || 0))); changed++; }
+        if (touched.type && f.type) { x.type = f.type as typeof x.type; changed++; }
+        if (touched.milestone) {
+          const on = f.milestone === 'yes';
+          if (x.milestone !== on) { x.milestone = on; if (on) x.duration = 0; else if (!x.duration) x.duration = 1; changed++; }
+        }
+        if (touched.res) sched(() => {
+          if (f.res === '__clear__') { ops.changeAssignments(p, x, () => { x.assignments = []; }); }
+          else {
+            const res = p.resources.find(r => String(r.uid) === f.res);
+            if (res && !x.assignments.some(a => a.res === res.uid)) {
+              ops.changeAssignments(p, x, () => { x.assignments.push({ res: res.uid, units: 1 }); });
+            }
+          }
+        });
+        if (touched.notes) { x.notes = f.notes; changed++; }
+      });
+    });
+    if (invalid) { st.toast('Some values were invalid and not applied.', true); return false; }
+    st.toast(`Updated ${tasks.length} task(s)` + (skipped ? ` · ${skipped} summary field(s) skipped` : ''));
+  };
+
+  const num = (k: keyof typeof init, extra: any) =>
+    <input className="inp" type="number" value={f[k]} placeholder={ph(k)} onChange={e => set(k, e.target.value)} {...extra} />;
+
+  return (
+    <Modal title={`Edit ${tasks.length} tasks`} okLabel="Apply to all" onSubmit={save}>
+      <p className="muted">Only fields you change are applied to every selected task in one undoable step.
+        Fields the tasks disagree on show <em>{MULTI}</em>; typing a value overwrites all of them.
+        Start / finish set scheduling constraints (start-no-earlier-than / finish-no-later-than).</p>
+      <div className="row3">
+        <label className="field"><span>Duration</span>
+          <input className="inp" value={f.duration} placeholder={ph('duration')} onChange={e => set('duration', e.target.value)} /></label>
+        <label className="field"><span>Start</span>
+          <input className="inp" type="date" value={f.start} onChange={e => set('start', e.target.value)} /></label>
+        <label className="field"><span>Finish</span>
+          <input className="inp" type="date" value={f.finish} onChange={e => set('finish', e.target.value)} /></label>
+      </div>
+      <div className="row3">
+        <label className="field"><span>% complete</span>{num('percent', { min: 0, max: 100, step: 5 })}</label>
+        <label className="field"><span>Priority (0–1000)</span>{num('priority', { min: 0, max: 1000, step: 50 })}</label>
+        <label className="field"><span>Task type</span>
+          <select className="sel" value={f.type} onChange={e => set('type', e.target.value)}>
+            <option value="">{ph('type') || 'Fixed units'}</option>
+            {Object.entries(M.TASK_TYPES).map(([k, v]) => <option key={k} value={k}>{String(v)}</option>)}
+          </select></label>
+      </div>
+      <div className="row3">
+        <label className="field"><span>Milestone</span>
+          <select className="sel" value={touched.milestone ? f.milestone : ''} onChange={e => set('milestone', e.target.value)}>
+            <option value="">{ph('milestone') || 'no'}</option>
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+          </select></label>
+        <label className="field"><span>Resource</span>
+          <select className="sel" value={f.res} onChange={e => set('res', e.target.value)}>
+            <option value="">Leave unchanged</option>
+            <option value="__clear__">Remove all assignments</option>
+            {st.p.resources.map(r => <option key={r.uid} value={String(r.uid)}>Assign: {r.name || '(unnamed)'}</option>)}
+          </select></label>
+        <label className="field"><span>Notes</span>
+          <input className="inp" value={f.notes} placeholder={ph('notes')} onChange={e => set('notes', e.target.value)} /></label>
+      </div>
+    </Modal>
+  );
+}
+
 const WBS_BOX_ROWS: { key: string; label: string }[] = [
   { key: 'wbs', label: 'WBS code' },
   { key: 'start', label: 'Start date' },
@@ -645,6 +760,7 @@ export default function DialogHost() {
     case 'recurring': return <RecurringDialog />;
     case 'resource': return <ResourceDialog uid={dialog.props.uid} />;
     case 'task': return <TaskDialog uid={dialog.props.uid} />;
+    case 'batchedit': return <BatchEditDialog uids={dialog.props.uids} />;
     case 'about': return <AboutDialog />;
     case 'import': return <ImportDialog />;
     case 'share': return <ShareDialog />;

@@ -573,6 +573,7 @@ export function NetworkView() {
     { hr: true },
     { label: 'Custom box color…', icon: 'sparkle', onClick: () => st.openDialog('boxcolor', { uids: st.sel.includes(uid) ? st.sel : [uid] }) },
     { label: 'Clear custom style', icon: 'x', disabled: !styleTargets(st, uid).some(u => st.p.tasks.find(t => t.uid === u)?.customStyle), onClick: () => setCustomStyle(styleTargets(st, uid), null) },
+    ...(st.sel.length > 1 ? [{ label: `Batch edit ${st.sel.length} tasks…`, icon: 'settings', onClick: () => st.openDialog('batchedit', { uids: st.sel }) }] : []),
   ];
   return (
     <div className="view">
@@ -661,6 +662,7 @@ export function WbsView() {
     { hr: true },
     { label: 'Custom box color…', icon: 'sparkle', onClick: () => st.openDialog('boxcolor', { uids: styleTargets(st, uid) }) },
     { label: 'Clear custom style', icon: 'x', disabled: !styleTargets(st, uid).some(u => st.p.tasks.find(t => t.uid === u)?.customStyle), onClick: () => setCustomStyle(styleTargets(st, uid), null) },
+    ...(st.sel.length > 1 ? [{ label: `Batch edit ${st.sel.length} tasks…`, icon: 'settings', onClick: () => st.openDialog('batchedit', { uids: st.sel }) }] : []),
   ];
   return (
     <div className="view">
