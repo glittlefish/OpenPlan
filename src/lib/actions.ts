@@ -72,7 +72,7 @@ export function viewSvgString(st: Store, opts?: { selected?: boolean }): string 
     const title = sr ? sr.wbs + ' ' + sr.task.name : st.p.name + ' — activity network';
     return C.network({ p: st.p, s: st.s, rows: scopeRows(st), critical: st.critical, dates: st.netDates, title }).svg;
   }
-  if (st.view === 'wbs') return C.wbs({ p: st.p, s: st.s, depth: st.wbsDepth, selected: opts?.selected ? Object.fromEntries(st.sel.map((u: number) => [u, true])) : null }).svg;
+  if (st.view === 'wbs') return C.wbs({ p: st.p, s: st.s, depth: st.wbsDepth, box: st.wbsBox, selected: opts?.selected ? Object.fromEntries(st.sel.map((u: number) => [u, true])) : null }).svg;
   if (st.view === 'org') {
     const people = st.p.resources.filter(r => r.kind === 'Work');
     return people.length ? C.org({ p: { resources: people, currency: st.p.currency } }).svg : null;

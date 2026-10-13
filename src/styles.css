@@ -195,6 +195,7 @@ img.logo { object-fit: contain; }
 .chk:hover { background: var(--hover); }
 .chk input { accent-color: var(--accent); }
 .chk-row { display: flex; flex-wrap: wrap; gap: 2px 6px; }
+.chk-list { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; }
 
 /* ---------- layout ---------- */
 .layout { flex: 1; display: flex; min-height: 0; background: var(--bg); }

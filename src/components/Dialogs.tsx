@@ -299,6 +299,33 @@ function TaskDialog({ uid }: { uid: number }) {
   );
 }
 
+const WBS_BOX_ROWS: { key: string; label: string }[] = [
+  { key: 'wbs', label: 'WBS code' },
+  { key: 'start', label: 'Start date' },
+  { key: 'finish', label: 'Finish date' },
+  { key: 'duration', label: 'Duration' },
+  { key: 'percent', label: '% complete' },
+  { key: 'resources', label: 'Resources' },
+  { key: 'preds', label: 'Predecessors' },
+  { key: 'notes', label: 'Notes (only when present)' },
+];
+
+function WbsBoxDialog() {
+  const st = useStore();
+  const [rows, setRows] = useState<string[]>(st.wbsBox);
+  const toggle = (k: string) => setRows(r => (r.includes(k) ? r.filter(x => x !== k) : [...r, k]));
+  return (
+    <Modal title="WBS box content" okLabel="Apply" onSubmit={() => { st.setUI({ wbsBox: rows }); }}>
+      <p className="muted">Choose which info lines each WBS box shows below the task name. The name is always shown.</p>
+      <div className="chk-list">
+        {WBS_BOX_ROWS.map(r => (
+          <label key={r.key} className="chk"><input type="checkbox" checked={rows.includes(r.key)} onChange={() => toggle(r.key)} />{r.label}</label>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
 export default function DialogHost() {
   const dialog = useStore(s => s.dialog);
   if (!dialog) return null;
@@ -311,6 +338,7 @@ export default function DialogHost() {
     case 'import': return <ImportDialog />;
     case 'share': return <ShareDialog />;
     case 'confirm': return <ConfirmDialog {...dialog.props} />;
+    case 'wbsbox': return <WbsBoxDialog />;
     default: return null;
   }
 }

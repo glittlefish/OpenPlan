@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import OP from '../core';
 import { useApp, useStore, S } from '../store';
 import { runAction, viewSvgString } from '../lib/actions';
-import { addTaskNear, copyTasks, hasClip, moveSubtreeTo, pasteTasks } from '../lib/taskOps';
+import { addLink, addTaskNear, copyTasks, hasClip, moveSubtreeTo, pasteTasks } from '../lib/taskOps';
 import Icon from '../components/Icon';
 import ContextMenu, { type CtxItem } from '../components/ContextMenu';
 
@@ -11,11 +11,13 @@ import ContextMenu, { type CtxItem } from '../components/ContextMenu';
 // openMode 'drawer' (Org): click selects and opens the side panel.
 // openMode 'dialog' (Network/WBS): click only selects; double-click opens a details dialog.
 // dragMove (WBS): pointer-drag a node onto another node to move that task's subtree.
+// dragLink (Network): pointer-drag a node onto another node to create a dependency.
 // onNodeContextMenu: right-click on a node (uid) or on empty canvas (null) at the cursor position.
-function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMove }: {
+function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMove, dragLink }: {
   svg: string; nodeClass?: string; openMode?: 'drawer' | 'dialog';
   onNodeContextMenu?: (uid: number | null, x: number, y: number) => void;
   dragMove?: (uid: number, targetUid: number) => boolean;
+  dragLink?: (fromUid: number, toUid: number) => boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const zoom = useStore(s => s.netZoom);
@@ -25,7 +27,10 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMo
   const suppressed = () => Date.now() < suppressUntil.current;
   const dragMoveRef = useRef(dragMove);
   dragMoveRef.current = dragMove;
+  const dragLinkRef = useRef(dragLink);
+  dragLinkRef.current = dragLink;
   const dragEnabled = !!dragMove && !!nodeClass;
+  const linkEnabled = !!dragLink && !!nodeClass;
   useLayoutEffect(() => {
     const el = ref.current?.querySelector('svg');
     if (!el) return;
@@ -138,6 +143,98 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMo
       window.removeEventListener('pointerup', onUp);
     };
   }, [dragEnabled, nodeClass, svg]);
+  // Drag-to-link (Network): drag from one node to another to create an FS dependency.
+  // A dashed preview line follows the cursor; valid targets highlight, loop targets turn red.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !linkEnabled) return;
+    const cls = '.' + nodeClass!;
+    const svgEl = () => el.querySelector('svg') as SVGSVGElement | null;
+    let active = false, dragging = false, src: Element | null = null, target: Element | null = null;
+    let sx = 0, sy = 0, uid = 0, bad = new Set<number>(), line: SVGPathElement | null = null;
+    // client -> SVG user-space coordinates (the svg width attribute is scaled by zoom, the viewBox is not).
+    const toSvg = (x: number, y: number) => {
+      const s = svgEl();
+      if (!s) return { x, y };
+      const r = s.getBoundingClientRect(), w = +s.dataset.w! || 1, k = r.width / w;
+      return { x: (x - r.left) / k, y: (y - r.top) / k };
+    };
+    const clearHi = () => {
+      if (target) { target.classList.remove('link-target', 'link-bad'); target = null; }
+      if (line) { line.remove(); line = null; }
+    };
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      const g = (e.target as Element).closest(cls);
+      if (!g) return;
+      active = true; dragging = false; src = g; target = null;
+      sx = e.clientX; sy = e.clientY; uid = +(g as SVGElement).dataset.uid!;
+      // Everything upstream of the source: linking back into it would loop.
+      const p = S().p, idx = OP.model.indexByUid(p);
+      bad = new Set<number>([uid]);
+      const stack = (p.tasks[idx[uid]]?.preds || []).map((l: any) => l.uid);
+      while (stack.length) {
+        const u = stack.pop()!;
+        if (bad.has(u)) continue;
+        bad.add(u);
+        (p.tasks[idx[u]]?.preds || []).forEach((l: any) => stack.push(l.uid));
+      }
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!active || !src) return;
+      if (!dragging) {
+        if (Math.hypot(e.clientX - sx, e.clientY - sy) < 5) return; // still a click
+        dragging = true;
+        el.style.userSelect = 'none';
+        const s = svgEl();
+        if (s) {
+          line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          line.setAttribute('class', 'lnk-drag');
+          line.setAttribute('marker-end', 'url(#nah)');
+          s.appendChild(line);
+        }
+      }
+      e.preventDefault();
+      if (line) {
+        const r = src.getBoundingClientRect(), a = toSvg(r.right, r.top + r.height / 2), b = toSvg(e.clientX, e.clientY);
+        const mx = (a.x + b.x) / 2;
+        line.setAttribute('d', 'M' + a.x + ',' + a.y + 'C' + mx + ',' + a.y + ' ' + mx + ',' + b.y + ' ' + b.x + ',' + b.y);
+      }
+      const hit = (document.elementFromPoint(e.clientX, e.clientY) as Element | null)?.closest(cls) || null;
+      const tUid = hit ? +(hit as SVGElement).dataset.uid! : 0;
+      const ok = !!hit && hit !== src && !bad.has(tUid);
+      const next = hit && hit !== src ? hit : null;
+      if (target !== next) {
+        if (target) target.classList.remove('link-target', 'link-bad');
+        target = next;
+        if (target) target.classList.add(ok ? 'link-target' : 'link-bad');
+      } else if (target) {
+        target.classList.toggle('link-target', ok);
+        target.classList.toggle('link-bad', !ok);
+      }
+    };
+    const onUp = () => {
+      if (!active) return;
+      if (dragging) {
+        el.style.userSelect = '';
+        suppressUntil.current = Date.now() + 400; // swallow the click that follows this drag
+        const drop = target as SVGElement | null; // clearHi() nulls target, so capture first
+        const dropUid = drop ? +drop.dataset.uid! : 0;
+        clearHi();
+        if (drop && dragLinkRef.current && dragLinkRef.current(uid, dropUid)) S().select([uid], uid);
+      }
+      active = false; dragging = false; src = null; bad = new Set();
+    };
+    el.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      clearHi();
+      el.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [linkEnabled, nodeClass, svg]);
   const uidOf = (target: EventTarget): number | null => {
     if (!nodeClass) return null;
     const g = (target as Element).closest('.' + nodeClass) as SVGGElement | null;
@@ -223,14 +320,14 @@ export function NetworkView() {
         <label className="toggle"><input type="checkbox" checked={st.critical} onChange={e => st.setUI({ critical: e.target.checked })} />Critical path</label>
         <span className="spacer" /><ZoomTools />
       </div>
-      {svg ? <Canvas svg={svg} nodeClass="nnode" openMode="dialog" /> : <Empty title="Nothing to show" text="Add tasks in the Gantt view first." />}
+      {svg ? <Canvas svg={svg} nodeClass="nnode" openMode="dialog" dragLink={(from, to) => addLink(from, to)} /> : <Empty title="Nothing to show" text="Add tasks in the Gantt view first." />}
     </div>
   );
 }
 
 export function WbsView() {
   const st = useApp();
-  const svg = useMemo(() => viewSvgString(st, { selected: true }), [st.p, st.s, st.wbsDepth, st.view, st.sel]);
+  const svg = useMemo(() => viewSvgString(st, { selected: true }), [st.p, st.s, st.wbsDepth, st.wbsBox, st.view, st.sel]);
   const maxLv = st.s.rows.reduce((a: number, r: any) => Math.max(a, r.task.level), 1);
   const levels: number[] = [];
   for (let l = 2; l <= Math.max(2, maxLv); l++) levels.push(l);
@@ -286,6 +383,7 @@ export function WbsView() {
         </div>
         <span className="muted">Show levels</span>
         <div className="seg">{levels.map(l => <button key={l} className={Math.min(st.wbsDepth, maxLv) === l ? 'on' : ''} onClick={() => st.setUI({ wbsDepth: l })}>{l}</button>)}</div>
+        <button className="btn" onClick={() => st.openDialog('wbsbox')}><Icon name="layers" />Box content</button>
         <span className="spacer" /><ZoomTools />
       </div>
       {svg ? <Canvas svg={svg} nodeClass="wnode" openMode="dialog"

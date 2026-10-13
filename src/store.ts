@@ -42,14 +42,16 @@ export interface UIState {
   bars: string;
   fullYear: boolean;
   guide: boolean;
+  wbsBox: string[];
 }
 
 const UI_DEFAULTS: UIState = {
   view: 'gantt', zoom: 'week', critical: true, gridW: 600, ganttHide: 'none', drawer: window.innerWidth > 1100, netScope: 'all', netDates: false,
   netZoom: 1, wbsDepth: 99, filter: 'all', group: 'none', sort: 'id', cols: DEFAULT_COLS.slice(), showBaseline: true,
-  report: 'overview', tab: 'task', timeline: true, ribbonMin: false, theme: 'light', bars: 'teal', fullYear: false, guide: true
+  report: 'overview', tab: 'task', timeline: true, ribbonMin: false, theme: 'light', bars: 'teal', fullYear: false, guide: true,
+  wbsBox: ['wbs']
 };
-const PERSISTED_UI: (keyof UIState)[] = ['view', 'zoom', 'critical', 'gridW', 'ganttHide', 'drawer', 'netDates', 'wbsDepth', 'filter', 'group', 'sort', 'cols', 'showBaseline', 'report', 'tab', 'timeline', 'theme', 'bars', 'fullYear', 'guide'];
+const PERSISTED_UI: (keyof UIState)[] = ['view', 'zoom', 'critical', 'gridW', 'ganttHide', 'drawer', 'netDates', 'wbsDepth', 'filter', 'group', 'sort', 'cols', 'showBaseline', 'report', 'tab', 'timeline', 'theme', 'bars', 'fullYear', 'guide', 'wbsBox'];
 
 export interface Dialog { type: string; props?: any }
 export type SaveState = 'ok' | 'full' | 'off';

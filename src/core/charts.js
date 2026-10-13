@@ -17,6 +17,8 @@ OP.charts = (function () {
     '.nh{fill:var(--surface-2)}.nh.c{fill:var(--critical-soft)}.cap{fill:var(--accent)}' +
     '.wbs0{fill:var(--accent);stroke:none}.wbs0t{fill:#fff;font-weight:600}.wbs1{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.25}' +
     '.wbs2{fill:var(--surface);stroke:var(--border-strong);stroke-width:1}.wbs1.sel,.wbs2.sel{stroke:var(--accent);stroke-width:2}.con{stroke:var(--border-strong);fill:none;stroke-width:1.25}' +
+    '.lnk-drag{stroke:var(--accent);stroke-width:1.5;stroke-dasharray:6 4;fill:none;pointer-events:none}' +
+    '.nnode.link-target rect{stroke:var(--accent);stroke-width:2.5}.nnode.link-bad rect{stroke:var(--critical);stroke-width:2.5}' +
     '.t-Manager{fill:var(--c1)}.t-Full-time{fill:var(--c2)}.t-Part-time{fill:var(--c3)}.t-Supporter{fill:var(--c4)}' +
     '.cbar{fill:var(--bar)}.cline{stroke:var(--bar);stroke-width:2;fill:none}.bud{stroke:var(--critical);stroke-width:1.5;stroke-dasharray:6 4}' +
     '.hit{fill:transparent}.hit:hover{fill:var(--accent);fill-opacity:.12}.grp{fill:var(--surface-3)}.bl{fill:var(--baseline)}.bar.late{fill:var(--warn)}' +
@@ -343,9 +345,10 @@ OP.charts = (function () {
 
   function wbs(o) {
     var p = o.p, s = o.s, depth = o.depth || 99;
+    var show = {}; (o.box || ['wbs']).forEach(function (k) { show[k] = true; });
+    var idx = OP.model.indexByUid(p);
     var tops = s.rows.filter(function (r) { return r.task.level === 1; });
-    var CW = 196, GX = 22, PAD = 30, RH = 56, NH = 44, IND = 18;
-    var colH = tops.map(function (t) { return desc(t).length; });
+    var CW = 196, GX = 22, PAD = 30, RH = 56, IND = 18, LH = 13;
     function desc(r) {
       var out = [];
       (function walk(x) {
@@ -356,10 +359,30 @@ OP.charts = (function () {
       })(r);
       return out;
     }
+    // Extra info lines below the (always shown) name; notes only when present.
+    function extrasOf(r) {
+      var out = [];
+      if (show.start) out.push('Start  ' + U.fmt(r.startDn));
+      if (show.finish) out.push('Finish  ' + U.fmt(r.finishDn));
+      if (show.duration) out.push('Duration  ' + OP.model.fmtDuration(r.duration));
+      if (show.percent) out.push('Complete  ' + Math.round(r.percent) + '%');
+      if (show.resources && r.names) out.push('Resources  ' + trunc(r.names, 42));
+      if (show.preds) { var pt = OP.model.formatPreds(p, r.task, idx); if (pt) out.push('Predecessors  ' + pt); }
+      if (show.notes && r.task.notes) out.push('Notes  ' + trunc(String(r.task.notes), 60));
+      return out;
+    }
+    function boxH(r, w) {
+      var maxc = Math.floor((w - 16) / 6.6);
+      var n = (show.wbs ? 1 : 0) + wrap(r.task.name, maxc, 2).length + extrasOf(r).length;
+      return Math.max(44, 18 + (n - 1) * LH); // 44 = the classic wbs + two name lines
+    }
+    var colH = tops.map(function (t) {
+      return desc(t).reduce(function (a, d) { return a + boxH(d, CW - ((d.task.level - 2) * IND + 14)) + 10; }, 0);
+    });
     var n = Math.max(tops.length, 1);
     var W = PAD * 2 + n * CW + (n - 1) * GX;
-    var maxDesc = Math.max.apply(null, colH.concat([0]));
-    var H = PAD * 2 + 60 + 44 + NH + maxDesc * (NH + 10) + 10;
+    var maxCol = Math.max.apply(null, colH.concat([0]));
+    var H = PAD * 2 + RH + 22 + 22 + 44 + 10 + maxCol + 10;
     var h = [svgOpen(W, H, 'wbs-svg')];
     var rootW = Math.min(W - PAD * 2, 320), rx = (W - rootW) / 2, ry = PAD;
     h.push('<rect class="wbs0" x="' + rx + '" y="' + ry + '" width="' + rootW + '" height="' + RH + '"/>');
@@ -374,25 +397,32 @@ OP.charts = (function () {
     tops.forEach(function (t, k) {
       var x = PAD + k * (CW + GX), y = busY + 22;
       h.push('<path class="con" d="M' + (x + CW / 2) + ',' + busY + 'V' + y + '"/>');
-      h.push(box(x, y, CW, t, 'wbs1'));
-      var list = desc(t), yy = y + NH + 10;
+      h.push(box(x, y, CW, t, 'wbs1', boxH(t, CW)));
+      var list = desc(t), yy = y + boxH(t, CW) + 10;
       list.forEach(function (d) {
-        var ind = (d.task.level - 2) * IND + 14, bx = x + ind;
+        var ind = (d.task.level - 2) * IND + 14, bx = x + ind, bw = CW - ind, nh = boxH(d, bw);
         var parentX = x + Math.max(ind - IND, 0) + 7;
-        h.push('<path class="con" d="M' + parentX + ',' + (yy - 10) + 'V' + (yy + NH / 2) + 'H' + bx + '"/>');
-        h.push(box(bx, yy, CW - ind, d, 'wbs2'));
-        yy += NH + 10;
+        h.push('<path class="con" d="M' + parentX + ',' + (yy - 10) + 'V' + (yy + nh / 2) + 'H' + bx + '"/>');
+        h.push(box(bx, yy, bw, d, 'wbs2', nh));
+        yy += nh + 10;
       });
     });
     h.push('</svg>');
     return { svg: h.join('') };
 
-    function box(x, y, w, r, cls) {
+    function box(x, y, w, r, cls, nh) {
       var maxc = Math.floor((w - 16) / 6.6), lines = wrap(r.task.name, maxc, 2), out = [];
-      out.push('<g class="wnode" data-uid="' + esc(r.task.uid) + '" tabindex="0" role="button" aria-label="' + esc(r.wbs + ' ' + r.task.name) + '"><rect class="' + cls + (o.selected && o.selected[r.task.uid] ? ' sel' : '') + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + NH + '"/>');
-      out.push('<text class="m sm" x="' + (x + 8) + '" y="' + (y + 15) + '">' + esc(r.wbs) + (r.milestone ? '  ◆' : '') + '</text>');
-      out.push('<text class="' + (r.summary ? 'b ' : '') + 'sm" x="' + (x + 8) + '" y="' + (y + (lines[1] ? 28 : 32)) + '">' + esc(lines[0]) + '</text>');
-      if (lines[1]) out.push('<text class="' + (r.summary ? 'b ' : '') + 'sm" x="' + (x + 8) + '" y="' + (y + 40) + '">' + esc(lines[1]) + '</text>');
+      out.push('<g class="wnode" data-uid="' + esc(r.task.uid) + '" tabindex="0" role="button" aria-label="' + esc(r.wbs + ' ' + r.task.name) + '"><rect class="' + cls + (o.selected && o.selected[r.task.uid] ? ' sel' : '') + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + nh + '"/>');
+      var ty = y + 15;
+      if (show.wbs) { out.push('<text class="m sm" x="' + (x + 8) + '" y="' + ty + '">' + esc(r.wbs) + (r.milestone ? '  ◆' : '') + '</text>'); ty += LH; }
+      lines.forEach(function (ln) {
+        out.push('<text class="' + (r.summary ? 'b ' : '') + 'sm" x="' + (x + 8) + '" y="' + ty + '">' + esc(ln) + '</text>');
+        ty += LH;
+      });
+      extrasOf(r).forEach(function (tx) {
+        out.push('<text class="m sm" x="' + (x + 8) + '" y="' + ty + '">' + esc(tx) + '</text>');
+        ty += LH;
+      });
       out.push('</g>');
       return out.join('');
     }
