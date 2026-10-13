@@ -16,7 +16,7 @@ OP.charts = (function () {
     '.node{fill:var(--surface);stroke:var(--border-strong);stroke-width:1.25}.node.c{stroke:var(--critical);stroke-width:2}' +
     '.nh{fill:var(--surface-2)}.nh.c{fill:var(--critical-soft)}.cap{fill:var(--accent)}' +
     '.wbs0{fill:var(--accent);stroke:none}.wbs0t{fill:#fff;font-weight:600}.wbs1{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.25}' +
-    '.wbs2{fill:var(--surface);stroke:var(--border-strong);stroke-width:1}.wbs1.sel,.wbs2.sel{stroke:var(--accent);stroke-width:2}.con{stroke:var(--border-strong);fill:none;stroke-width:1.25}' +
+    '.wbs2{fill:var(--surface);stroke:var(--border-strong);stroke-width:1}.wbs1.sel,.wbs2.sel{stroke:var(--accent)!important;stroke-width:2!important}.con{stroke:var(--border-strong);fill:none;stroke-width:1.25}' +
     '.lnk-drag{stroke:var(--accent);stroke-width:1.5;stroke-dasharray:6 4;fill:none;pointer-events:none}' +
     '.nnode.link-target rect{stroke:var(--accent);stroke-width:2.5}.nnode.link-bad rect{stroke:var(--critical);stroke-width:2.5}' +
     '.t-Manager{fill:var(--c1)}.t-Full-time{fill:var(--c2)}.t-Part-time{fill:var(--c3)}.t-Supporter{fill:var(--c4)}' +
@@ -42,6 +42,121 @@ OP.charts = (function () {
     if (out.length > lines) { out = out.slice(0, lines); out[lines - 1] = trunc(out[lines - 1] + '…', max); }
     return out;
   }
+
+  /* ---------- Box style rules (PRD M14) ---------- */
+
+  var BS_NUM = { percentComplete: 1, level: 1, duration: 1 };
+
+  // All conditions of a rule combine with AND.
+  function bsMatch(conds, ctx) {
+    if (!conds || !conds.length) return true;
+    return conds.every(function (c) {
+      var v = ctx[c.field], val = c.value;
+      switch (c.op) {
+        case 'isEmpty': return v == null || v === '' || (Array.isArray(v) && !v.length);
+        case 'isNotEmpty': return !(v == null || v === '' || (Array.isArray(v) && !v.length));
+      }
+      if (c.field === 'resourceId') {
+        var list = Array.isArray(v) ? v : [];
+        switch (c.op) {
+          case 'eq': return list.indexOf(val) >= 0;                       // is assigned to
+          case 'neq': return list.indexOf(val) < 0;                        // is not assigned to
+          case 'contains': return String(ctx.resNames).toLowerCase().indexOf(String(val == null ? '' : val).toLowerCase()) >= 0;
+        }
+        return false;
+      }
+      if (typeof v === 'boolean') {
+        var bv = val === true || val === 'true' || val === 1 || val === '1';
+        return c.op === 'eq' ? v === bv : c.op === 'neq' ? v !== bv : false;
+      }
+      if (typeof v === 'number' || BS_NUM[c.field]) {
+        var a = +v, b = +val;
+        if (!isFinite(b)) return false;
+        switch (c.op) {
+          case 'eq': return a === b; case 'neq': return a !== b;
+          case 'gt': return a > b; case 'gte': return a >= b; case 'lt': return a < b; case 'lte': return a <= b;
+        }
+        return false;
+      }
+      var sv = String(v == null ? '' : v).toLowerCase(), tv = String(val == null ? '' : val).toLowerCase();
+      switch (c.op) {
+        case 'eq': return sv === tv; case 'neq': return sv !== tv;
+        case 'contains': return sv.indexOf(tv) >= 0;
+        case 'gt': return sv > tv; case 'gte': return sv >= tv; case 'lt': return sv < tv; case 'lte': return sv <= tv;
+      }
+      return false;
+    });
+  }
+
+  // Merge the styles that apply to one row: matched partial rules fill their set
+  // attributes (in priority order), then the first matched full rule overrides
+  // wholesale. A per-task customStyle beats everything.
+  function boxStyleFor(o, view, r) {
+    var rules = (o.p && o.p.boxRules) || [];
+    var cs = r.task && r.task.customStyle;
+    if (!rules.length && !cs) return null;
+    var crit = view === 'network' ? (o.critical && r.critical) : r.critical;
+    var ctx = {
+      isCritical: !!crit, percentComplete: r.percent, level: r.task.level, duration: r.duration,
+      type: r.task.type, resourceId: (r.task.assignments || []).map(function (a) { return a.res; }),
+      constraintType: r.task.constraint, hasDeadline: !!r.task.deadline, milestone: !!r.task.milestone,
+      summary: !!r.summary, name: r.task.name, notes: r.task.notes || '', resNames: r.names || ''
+    };
+    var out = null, i, k;
+    for (i = 0; i < rules.length; i++) {
+      var ru = rules[i];
+      if (!ru.enabled || ru.scope !== 'partial') continue;
+      if (!ru.views || ru.views.indexOf(view) < 0) continue;
+      if (!bsMatch(ru.conditions, ctx)) continue;
+      if (!out) out = {};
+      for (k in ru.style) if (ru.style[k] != null && ru.style[k] !== '') out[k] = ru.style[k];
+    }
+    for (i = 0; i < rules.length; i++) {
+      var rf = rules[i];
+      if (!rf.enabled || rf.scope !== 'full') continue;
+      if (!rf.views || rf.views.indexOf(view) < 0) continue;
+      if (!bsMatch(rf.conditions, ctx)) continue;
+      out = {};
+      for (k in rf.style) if (rf.style[k] != null && rf.style[k] !== '') out[k] = rf.style[k];
+      break;
+    }
+    if (cs) {
+      if (!out) out = {};
+      for (k in cs) if (cs[k] != null && cs[k] !== '') out[k] = cs[k];
+    }
+    return out;
+  }
+
+  // Inline SVG attribute fragments for a merged style.
+  function boxStyleParts(st) {
+    if (!st) return null;
+    var r = [], t = [];
+    if (st.fillColor) r.push('fill:' + (st.fillColor === 'transparent' ? 'none' : st.fillColor));
+    if (st.borderColor) r.push('stroke:' + st.borderColor);
+    if (st.borderWidth != null) r.push('stroke-width:' + st.borderWidth);
+    if (st.borderDash === 'dashed') r.push('stroke-dasharray:5 3');
+    else if (st.borderDash === 'dotted') r.push('stroke-dasharray:2 3');
+    if (st.textColor) t.push('fill:' + st.textColor);
+    if (st.bold) t.push('font-weight:600');
+    return { rect: r.length ? ' style="' + r.join(';') + '"' : '', text: t.length ? ' style="' + t.join(';') + '"' : '' };
+  }
+
+  // Classic offset shadow: a solid rect drawn behind the box.
+  function shadowRect(st, x, y, w, h) {
+    if (!st || !st.shadowColor) return '';
+    var sx = st.shadowX || 0, sy = st.shadowY || 0;
+    if (!sx && !sy) return '';
+    return '<rect x="' + (x + sx) + '" y="' + (y + sy) + '" width="' + w + '" height="' + h + '" fill="' + st.shadowColor + '" stroke="none"/>';
+  }
+
+  // The built-in "critical" rule also drives the network header tint; when the user
+  // disables it, the whole critical indication disappears.
+  function builtinCriticalOn(p) {
+    var rules = (p && p.boxRules) || [];
+    for (var i = 0; i < rules.length; i++) if (rules[i].id === 'b-critical') return rules[i].enabled !== false;
+    return true;
+  }
+
 
   /* ---------- Gantt ---------- */
 
@@ -323,18 +438,22 @@ OP.charts = (function () {
     function v(n) { return o.dates ? n : U.num(n); }
     rows.forEach(function (r) {
       var p = at[r.i];
+      var bs = boxStyleFor(o, 'network', r);
       h.push('<g class="nnode" data-uid="' + esc(r.task.uid) + '" tabindex="0" role="button" aria-label="' + esc(r.id + '. ' + r.task.name) + '">' + nodeBox(p.x, p.y, {
         es: o.dates ? U.fmt(r.startDn) : v(r.es), dur: OP.model.fmtDuration(r.duration), ef: o.dates ? U.fmt(r.finishDn) : v(r.ef),
         id: r.id, name: r.task.name, res: r.names, ls: o.dates ? U.fmt(s.cal.date(r.ls)) : v(r.ls),
         slack: U.num(r.slack) + 'd', lf: o.dates ? U.fmt(s.cal.date(Math.max(Math.ceil(r.lf) - 1, 0))) : v(r.lf), crit: o.critical && r.critical
-      }) + '</g>');
+      }, bs) + '</g>');
     });
     h.push('</svg>');
     return { svg: h.join(''), width: W, height: H };
 
-    function nodeBox(x, y, n) {
-      var c = n.crit ? ' c' : '', cw = NW / 3, out = [];
-      out.push('<rect class="node' + c + '" x="' + x + '" y="' + y + '" width="' + NW + '" height="' + NH + '"/>');
+    function nodeBox(x, y, n, bs) {
+      var sp = boxStyleParts(bs), tx = sp ? sp.text : '';
+      // The critical header tint follows the built-in critical rule's enable state.
+      var c = n.crit && builtinCriticalOn(o.p) ? ' c' : '', cw = NW / 3, out = [];
+      out.push(shadowRect(bs, x, y, NW, NH));
+      out.push('<rect class="node' + c + '"' + (sp ? sp.rect : '') + ' x="' + x + '" y="' + y + '" width="' + NW + '" height="' + NH + '"/>');
       out.push('<rect class="nh' + c + '" x="' + (x + 1) + '" y="' + (y + 1) + '" width="' + (NW - 2) + '" height="21"/>');
       out.push('<rect class="nh' + c + '" x="' + (x + 1) + '" y="' + (y + NH - 22) + '" width="' + (NW - 2) + '" height="21"/>');
       out.push('<line class="gls" x1="' + x + '" y1="' + (y + 22) + '" x2="' + (x + NW) + '" y2="' + (y + 22) + '"/>');
@@ -344,12 +463,12 @@ OP.charts = (function () {
         out.push('<line class="gls" x1="' + (x + cw * k) + '" y1="' + (y + NH - 22) + '" x2="' + (x + cw * k) + '" y2="' + (y + NH) + '"/>');
       }
       [[n.es, n.dur, n.ef, y + 15], [n.ls, n.slack, n.lf, y + NH - 7]].forEach(function (rowv) {
-        for (var q = 0; q < 3; q++) out.push('<text class="sm' + (n.legend ? ' m' : ' b') + '" text-anchor="middle" x="' + (x + cw * q + cw / 2) + '" y="' + rowv[3] + '">' + esc(rowv[q]) + '</text>');
+        for (var q = 0; q < 3; q++) out.push('<text class="sm' + (n.legend ? ' m' : ' b') + '"' + tx + ' text-anchor="middle" x="' + (x + cw * q + cw / 2) + '" y="' + rowv[3] + '">' + esc(rowv[q]) + '</text>');
       });
       var lines = wrap(n.name, 27, n.res ? 1 : 2);
-      out.push('<text class="b" x="' + (x + 8) + '" y="' + (y + 40) + '">' + esc((n.legend ? n.id : n.id + '.') + ' ' + lines[0]) + '</text>');
-      if (lines[1]) out.push('<text class="b" x="' + (x + 8) + '" y="' + (y + 55) + '">' + esc(lines[1]) + '</text>');
-      else if (n.res) out.push('<text class="m sm" x="' + (x + 8) + '" y="' + (y + 56) + '">' + esc(trunc(n.res, 32)) + '</text>');
+      out.push('<text class="b"' + tx + ' x="' + (x + 8) + '" y="' + (y + 40) + '">' + esc((n.legend ? n.id : n.id + '.') + ' ' + lines[0]) + '</text>');
+      if (lines[1]) out.push('<text class="b"' + tx + ' x="' + (x + 8) + '" y="' + (y + 55) + '">' + esc(lines[1]) + '</text>');
+      else if (n.res) out.push('<text class="m sm"' + tx + ' x="' + (x + 8) + '" y="' + (y + 56) + '">' + esc(trunc(n.res, 32)) + '</text>');
       return out.join('');
     }
   }
@@ -424,16 +543,17 @@ OP.charts = (function () {
     return { svg: h.join('') };
 
     function box(x, y, w, r, cls, nh) {
+      var bs = boxStyleFor(o, 'wbs', r), sp = boxStyleParts(bs), tx = sp ? sp.text : '';
       var maxc = Math.floor((w - 16) / 6.6), lines = wrap(r.task.name, maxc, 2), out = [];
-      out.push('<g class="wnode" data-uid="' + esc(r.task.uid) + '" tabindex="0" role="button" aria-label="' + esc(r.wbs + ' ' + r.task.name) + '"><rect class="' + cls + (o.selected && o.selected[r.task.uid] ? ' sel' : '') + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + nh + '"/>');
+      out.push('<g class="wnode" data-uid="' + esc(r.task.uid) + '" tabindex="0" role="button" aria-label="' + esc(r.wbs + ' ' + r.task.name) + '">' + shadowRect(bs, x, y, w, nh) + '<rect class="' + cls + (o.selected && o.selected[r.task.uid] ? ' sel' : '') + '"' + (sp ? sp.rect : '') + ' x="' + x + '" y="' + y + '" width="' + w + '" height="' + nh + '"/>');
       var ty = y + 15;
-      if (show.wbs) { out.push('<text class="m sm" x="' + (x + 8) + '" y="' + ty + '">' + esc(r.wbs) + (r.milestone ? '  ◆' : '') + '</text>'); ty += LH; }
+      if (show.wbs) { out.push('<text class="m sm"' + tx + ' x="' + (x + 8) + '" y="' + ty + '">' + esc(r.wbs) + (r.milestone ? '  ◆' : '') + '</text>'); ty += LH; }
       lines.forEach(function (ln) {
-        out.push('<text class="' + (r.summary ? 'b ' : '') + 'sm" x="' + (x + 8) + '" y="' + ty + '">' + esc(ln) + '</text>');
+        out.push('<text class="' + (r.summary ? 'b ' : '') + 'sm"' + tx + ' x="' + (x + 8) + '" y="' + ty + '">' + esc(ln) + '</text>');
         ty += LH;
       });
-      extrasOf(r).forEach(function (tx) {
-        out.push('<text class="m sm" x="' + (x + 8) + '" y="' + ty + '">' + esc(tx) + '</text>');
+      extrasOf(r).forEach(function (tx2) {
+        out.push('<text class="m sm"' + tx + ' x="' + (x + 8) + '" y="' + ty + '">' + esc(tx2) + '</text>');
         ty += LH;
       });
       out.push('</g>');

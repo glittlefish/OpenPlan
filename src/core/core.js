@@ -136,8 +136,22 @@ OP.model = (function () {
       baseline: null,
       nextUid: 1,
       tasks: [],
-      resources: []
+      resources: [],
+      boxRules: builtinBoxRules()
     };
+  }
+
+  // Box style rules (PRD M14): two built-ins reproduce the classic look —
+  // critical tasks get the red border in the network diagram, everything else stays default.
+  // They are partial (border only) and scoped to the network chart so the WBS default look is unchanged.
+  function builtinBoxRules() {
+    return [
+      { id: 'b-critical', name: 'Critical tasks', enabled: true, builtin: true, scope: 'partial', views: ['network'],
+        conditions: [{ field: 'isCritical', op: 'eq', value: true }],
+        style: { borderColor: 'var(--critical)', borderWidth: 2 } },
+      { id: 'b-normal', name: 'Non-critical tasks', enabled: true, builtin: true, scope: 'partial', views: ['network'],
+        conditions: [{ field: 'isCritical', op: 'eq', value: false }], style: {} }
+    ];
   }
 
   var TASK_DEFAULTS = {
@@ -220,6 +234,7 @@ OP.model = (function () {
         if (typeof v === 'string' || (typeof v === 'number' && isFinite(v))) custom[c] = v;
       }
       t.custom = custom;
+      t.customStyle = isObj(t.customStyle) ? sanitizeBoxStyle(t.customStyle) : null;
     });
     p.resources.forEach(function (r) {
       fill(r, RES_DEFAULTS);
@@ -244,9 +259,47 @@ OP.model = (function () {
       if (isObj(q) && isFinite(+q.x) && isFinite(+q.y)) good[t.uid] = { x: +q.x, y: +q.y };
     });
     p.netPos = good;
+    // Box style rules (PRD M14): sanitize, cap at 50, keep the built-ins present for older files.
+    p.boxRules = arr(p.boxRules).filter(isObj).slice(0, 50).map(sanitizeBoxRule);
+    var haveB = {};
+    p.boxRules.forEach(function (r) { if (r.builtin) haveB[r.id] = true; });
+    builtinBoxRules().forEach(function (b) { if (!haveB[b.id]) p.boxRules.unshift(b); });
     p.version = 2;
     normalizeLevels(p);
     return p;
+  }
+
+  var BS_FIELDS = ['isCritical', 'percentComplete', 'level', 'duration', 'type', 'resourceId', 'constraintType', 'hasDeadline', 'milestone', 'summary', 'name', 'notes'];
+  var BS_OPS = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'isEmpty', 'isNotEmpty'];
+
+  function sanitizeBoxStyle(style) {
+    var s = {};
+    ['borderColor', 'fillColor', 'textColor', 'shadowColor'].forEach(function (k) {
+      if (typeof style[k] === 'string' && style[k]) s[k] = style[k];
+    });
+    if (style.borderWidth === 1 || style.borderWidth === 2 || style.borderWidth === 3) s.borderWidth = style.borderWidth;
+    if (style.borderDash === 'solid' || style.borderDash === 'dashed' || style.borderDash === 'dotted') s.borderDash = style.borderDash;
+    if (style.bold) s.bold = true;
+    ['shadowX', 'shadowY'].forEach(function (k) {
+      if (isFinite(+style[k])) s[k] = Math.max(-4, Math.min(4, Math.round(+style[k])));
+    });
+    return s;
+  }
+
+  function sanitizeBoxRule(r) {
+    var views = arr(r.views).filter(function (v) { return v === 'wbs' || v === 'network'; });
+    return {
+      id: str(r.id) || 'r' + Math.random().toString(36).slice(2, 8),
+      name: str(r.name) || 'Rule',
+      enabled: r.enabled == null ? true : !!r.enabled,
+      builtin: !!r.builtin,
+      scope: r.scope === 'full' ? 'full' : 'partial',
+      views: views.length ? views : ['wbs', 'network'],
+      conditions: arr(r.conditions).filter(isObj).slice(0, 10).map(function (c) {
+        return { field: str(c.field), op: str(c.op), value: c.value };
+      }).filter(function (c) { return BS_FIELDS.indexOf(c.field) >= 0 && BS_OPS.indexOf(c.op) >= 0; }),
+      style: sanitizeBoxStyle(isObj(r.style) ? r.style : {})
+    };
   }
 
   function isObj(o) { return o != null && typeof o === 'object' && !Array.isArray(o); }

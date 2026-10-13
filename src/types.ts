@@ -26,6 +26,8 @@ export interface Task {
   levelDelay: number;
   priority: number;
   custom: Record<string, string | number>;
+  /** Manual per-task box style override for WBS/Network charts; beats all box style rules. */
+  customStyle?: BoxStyle | null;
 }
 
 export interface Resource {
@@ -47,6 +49,34 @@ export interface Resource {
 
 export interface CustomField { id: string; name: string; type: 'text' | 'number' }
 
+/** Visual style attributes for chart boxes (WBS / Network). Unset keys fall through to lower-priority rules. */
+export interface BoxStyle {
+  borderColor?: string;                       // hex color or CSS var token
+  borderWidth?: 1 | 2 | 3;
+  borderDash?: 'solid' | 'dashed' | 'dotted';
+  fillColor?: string;                        // hex color or 'transparent'
+  textColor?: string;
+  bold?: boolean;
+  shadowColor?: string;                      // empty/undefined = no shadow
+  shadowX?: number;                          // -4..4
+  shadowY?: number;
+}
+
+/** One condition of a box style rule; all conditions of a rule combine with AND. */
+export interface BoxCondition { field: string; op: string; value: any }
+
+/** Rule-driven box styling (PRD M14). Array order = priority (ascending evaluation). */
+export interface BoxRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  builtin: boolean;                          // built-ins can be disabled but not deleted
+  scope: 'partial' | 'full';                  // partial fills only set attributes; full overrides wholesale
+  views: ('wbs' | 'network')[];               // which charts the rule applies to
+  conditions: BoxCondition[];
+  style: BoxStyle;
+}
+
 export interface Project {
   version: number;
   name: string;
@@ -67,6 +97,8 @@ export interface Project {
   resources: Resource[];
   /** Network diagram: manual node positions (uid -> SVG coordinates), empty when layout is automatic. */
   netPos?: Record<number, { x: number; y: number }>;
+  /** WBS/Network chart: box style rules, ordered by priority (first entries evaluated first). */
+  boxRules?: BoxRule[];
 }
 
 /* Computed schedule rows and results come from the JavaScript engine (core.js). */

@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 import OP from '../core';
 import { useStore, S } from '../store';
 import * as ops from '../lib/taskOps';
 import Icon from './Icon';
 import { TaskEditor } from './Drawer';
-import type { CustomField, Resource, Row } from '../types';
+import type { BoxCondition, BoxRule, BoxStyle, CustomField, Resource, Row } from '../types';
 import { version } from '../../package.json';
 import { projectFromTable } from '../lib/importTable';
 import { shareUrl } from '../lib/share';
@@ -13,12 +13,14 @@ import { loadProject } from '../lib/actions';
 const U = OP.util;
 const STATUSES = ['Draft', 'In review', 'Approved', 'Baselined', 'Final'];
 
-function Modal({ title, children, onSubmit, okLabel = 'Save', cancelLabel = 'Cancel', noOk, backdropClose }: {
+function Modal({ title, children, onSubmit, okLabel = 'Save', cancelLabel = 'Cancel', noOk, backdropClose, onClose }: {
   title: string; children: ReactNode; onSubmit?: (fd: FormData) => boolean | void; okLabel?: ReactNode; cancelLabel?: string; noOk?: boolean;
-  backdropClose?: boolean;
+  backdropClose?: boolean; onClose?: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
-  const close = () => S().closeDialog();
+  // Nested modals (a Modal rendered inside another Modal) must not close the whole dialog stack,
+  // so the store-level close can be overridden per instance.
+  const close = onClose ?? (() => S().closeDialog());
   useEffect(() => {
     const d = ref.current!;
     if (!d.open) d.showModal();
@@ -26,6 +28,13 @@ function Modal({ title, children, onSubmit, okLabel = 'Save', cancelLabel = 'Can
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (onSubmit && onSubmit(new FormData(e.currentTarget)) === false) return;
+    close();
+  };
+  // The submit event of a form inside a modal <dialog> nested in another form never reaches
+  // React's root listener, so the ok button submits programmatically instead of type="submit".
+  const ok = () => {
+    const form = ref.current?.querySelector('form');
+    if (onSubmit && onSubmit(form ? new FormData(form) : new FormData()) === false) return;
     close();
   };
   const backdrop = (e: MouseEvent<HTMLDialogElement>) => {
@@ -38,7 +47,7 @@ function Modal({ title, children, onSubmit, okLabel = 'Save', cancelLabel = 'Can
         <div className="dlg-body">{children}</div>
         <div className="dlg-foot">
           <button type="button" className="btn" onClick={close}>{cancelLabel}</button>
-          {!noOk && <button type="submit" className="btn primary">{okLabel}</button>}
+          {!noOk && <button type="button" className="btn primary" onClick={ok}>{okLabel}</button>}
         </div>
       </form>
     </dialog>
@@ -326,6 +335,244 @@ function WbsBoxDialog() {
   );
 }
 
+/* ---------- Box style rules (PRD M14) ---------- */
+
+const BS_PALETTE = ['#e11d48', '#f97316', '#eab308', '#22c55e', '#14b8a6', '#0ea5e9', '#6366f1', '#a855f7', '#ec4899', '#78716c', '#334155', '#ffffff'];
+const BS_MAX = 50;
+
+const BS_FIELDS: { key: string; label: string; kind: 'bool' | 'num' | 'str' | 'type' | 'res' | 'constraint' }[] = [
+  { key: 'isCritical', label: 'Critical', kind: 'bool' },
+  { key: 'percentComplete', label: '% complete', kind: 'num' },
+  { key: 'level', label: 'Outline level', kind: 'num' },
+  { key: 'duration', label: 'Duration (working days)', kind: 'num' },
+  { key: 'type', label: 'Task type', kind: 'type' },
+  { key: 'resourceId', label: 'Resource', kind: 'res' },
+  { key: 'constraintType', label: 'Constraint', kind: 'constraint' },
+  { key: 'hasDeadline', label: 'Has deadline', kind: 'bool' },
+  { key: 'milestone', label: 'Milestone', kind: 'bool' },
+  { key: 'summary', label: 'Summary task', kind: 'bool' },
+  { key: 'name', label: 'Name', kind: 'str' },
+  { key: 'notes', label: 'Notes', kind: 'str' },
+];
+
+const BS_OPS: Record<string, { key: string; label: string; noValue?: boolean }[]> = {
+  bool: [{ key: 'eq', label: 'is' }, { key: 'neq', label: 'is not' }],
+  num: [{ key: 'eq', label: '=' }, { key: 'neq', label: '≠' }, { key: 'gt', label: '>' }, { key: 'gte', label: '≥' }, { key: 'lt', label: '<' }, { key: 'lte', label: '≤' }],
+  str: [{ key: 'eq', label: 'is' }, { key: 'neq', label: 'is not' }, { key: 'contains', label: 'contains' }, { key: 'isEmpty', label: 'is empty', noValue: true }, { key: 'isNotEmpty', label: 'is not empty', noValue: true }],
+  res: [{ key: 'eq', label: 'is assigned to' }, { key: 'neq', label: 'is not assigned to' }, { key: 'contains', label: 'name contains', noValue: false }, { key: 'isEmpty', label: 'has no resource', noValue: true }, { key: 'isNotEmpty', label: 'has a resource', noValue: true }],
+  type: [{ key: 'eq', label: 'is' }, { key: 'neq', label: 'is not' }],
+  constraint: [{ key: 'eq', label: 'is' }, { key: 'neq', label: 'is not' }],
+};
+
+const fieldOf = (key: string) => BS_FIELDS.find(f => f.key === key)!;
+const opsOf = (key: string) => BS_OPS[fieldOf(key).kind];
+
+function valueLabel(c: BoxCondition, p: { resources: Resource[] }): string {
+  const f = fieldOf(c.field);
+  switch (f.kind) {
+    case 'bool': return c.value ? 'yes' : 'no';
+    case 'res': {
+      const r = p.resources.find(x => x.uid === c.value);
+      return r ? r.name : String(c.value ?? '');
+    }
+    case 'type': return { FixedUnits: 'Fixed units', FixedWork: 'Fixed work', FixedDuration: 'Fixed duration' }[String(c.value)] || String(c.value ?? '');
+    case 'constraint': return String(c.value || 'ASAP');
+    default: return String(c.value ?? '');
+  }
+}
+
+function condSummary(rule: BoxRule, p: { resources: Resource[] }): string {
+  if (!rule.conditions.length) return 'All tasks';
+  return rule.conditions.map(c => {
+    const op = (opsOf(c.field) || []).find(o => o.key === c.op);
+    const label = op ? op.label : c.op;
+    return op?.noValue ? `${fieldOf(c.field).label} ${label}` : `${fieldOf(c.field).label} ${label} ${valueLabel(c, p)}`;
+  }).join(' and ');
+}
+
+function previewStyle(st: BoxStyle): CSSProperties {
+  const css: React.CSSProperties = {};
+  if (st.fillColor) css.background = st.fillColor === 'transparent' ? 'transparent' : st.fillColor;
+  css.border = `${st.borderWidth || 1}px ${st.borderDash === 'dashed' ? 'dashed' : st.borderDash === 'dotted' ? 'dotted' : 'solid'} ${st.borderColor || 'var(--border-strong)'}`;
+  if (st.shadowColor) css.boxShadow = `${st.shadowX || 0}px ${st.shadowY || 0}px 0 ${st.shadowColor}`;
+  if (st.textColor) css.color = st.textColor;
+  if (st.bold) css.fontWeight = 600;
+  return css;
+}
+
+function ColorPicker({ value, onChange, allowTransparent }: { value: string; onChange: (v: string) => void; allowTransparent?: boolean }) {
+  return <div className="swatches">
+    <button type="button" className={'sw none' + (!value ? ' on' : '')} title="Not set (fall through to other rules)" aria-label="No color" onClick={() => onChange('')} />
+    {allowTransparent && <button type="button" className={'sw trans' + (value === 'transparent' ? ' on' : '')} title="Transparent fill" aria-label="Transparent" onClick={() => onChange('transparent')} />}
+    {BS_PALETTE.map(c => <button type="button" key={c} className={'sw' + (value === c ? ' on' : '')} style={{ background: c }} aria-label={c} onClick={() => onChange(c)} />)}
+    <input className="inp hex" value={value} placeholder="#hex" aria-label="Custom hex color" onChange={e => onChange(e.target.value.trim())} />
+  </div>;
+}
+
+function CondRow({ c, onChange, onRemove }: { c: BoxCondition; onChange: (c: BoxCondition) => void; onRemove: () => void }) {
+  const st = useStore();
+  const f = fieldOf(c.field), list = opsOf(c.field);
+  const op = list.find(o => o.key === c.op) || list[0];
+  const setField = (key: string) => {
+    const nf = fieldOf(key);
+    const def: any = nf.kind === 'bool' ? true : nf.kind === 'num' ? 0 : nf.kind === 'res' ? (st.p.resources[0]?.uid ?? 0) : nf.kind === 'type' ? 'FixedUnits' : nf.kind === 'constraint' ? 'ASAP' : '';
+    onChange({ field: key, op: opsOf(key)[0].key, value: def });
+  };
+  return <div className="cond-row">
+    <select className="sel" value={c.field} onChange={e => setField(e.target.value)}>
+      {BS_FIELDS.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
+    </select>
+    <select className="sel" value={op.key} onChange={e => onChange({ ...c, op: e.target.value })}>
+      {list.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+    </select>
+    {!op.noValue && (f.kind === 'bool' ? <select className="sel" value={c.value ? 'true' : 'false'} onChange={e => onChange({ ...c, value: e.target.value === 'true' })}>
+        <option value="true">yes</option><option value="false">no</option>
+      </select> : f.kind === 'res' ? <select className="sel" value={String(c.value)} onChange={e => onChange({ ...c, value: +e.target.value })}>
+        {st.p.resources.map(r => <option key={r.uid} value={String(r.uid)}>{r.name || r.initials || r.uid}</option>)}
+      </select> : f.kind === 'type' ? <select className="sel" value={String(c.value)} onChange={e => onChange({ ...c, value: e.target.value })}>
+        <option value="FixedUnits">Fixed units</option><option value="FixedWork">Fixed work</option><option value="FixedDuration">Fixed duration</option>
+      </select> : f.kind === 'constraint' ? <select className="sel" value={String(c.value)} onChange={e => onChange({ ...c, value: e.target.value })}>
+        {['ASAP', 'ALAP', 'SNET', 'SNLT', 'FNET', 'FNLT', 'MSO', 'MFO'].map(k => <option key={k} value={k}>{k}</option>)}
+      </select> : f.kind === 'num' ? <input className="inp" type="number" value={Number(c.value) || 0} onChange={e => onChange({ ...c, value: +e.target.value })} /> :
+        <input className="inp" value={String(c.value ?? '')} onChange={e => onChange({ ...c, value: e.target.value })} />)}
+    <button type="button" className="icon-btn" aria-label="Remove condition" onClick={onRemove}><Icon name="x" /></button>
+  </div>;
+}
+
+function newRuleDraft(): BoxRule {
+  return {
+    id: 'r' + Date.now().toString(36), name: 'New rule', enabled: true, builtin: false, scope: 'full',
+    views: ['wbs', 'network'], conditions: [{ field: 'isCritical', op: 'eq', value: true }],
+    style: { borderColor: '#e11d48', borderWidth: 2 },
+  };
+}
+
+function RuleEditor({ rule, onSave, onClose }: { rule: BoxRule; onSave: (r: BoxRule) => void; onClose: () => void }) {
+  const [draft, setDraft] = useState<BoxRule>(() => ({ ...rule, style: { ...rule.style }, conditions: rule.conditions.map(c => ({ ...c })), views: [...rule.views] }));
+  const patch = (p: Partial<BoxRule>) => setDraft(d => ({ ...d, ...p }));
+  const patchStyle = (p: Partial<BoxStyle>) => setDraft(d => ({ ...d, style: { ...d.style, ...p } }));
+  const toggleView = (v: 'wbs' | 'network') => patch({ views: draft.views.includes(v) ? draft.views.filter(x => x !== v) : [...draft.views, v] });
+  return (
+    <Modal title={rule.builtin ? 'Built-in rule (read only)' : (rule.name || 'Rule')} okLabel="Save rule" noOk={rule.builtin} cancelLabel={rule.builtin ? 'Close' : 'Cancel'} onClose={onClose} onSubmit={() => { onSave(draft); }}>
+      {rule.builtin && <p className="muted">Built-in rules cannot be edited. Duplicate one to tweak it, or disable it here:</p>}
+      {rule.builtin && <label className="toggle"><input type="checkbox" checked={draft.enabled} onChange={e => { patch({ enabled: e.target.checked }); onSave({ ...draft, enabled: e.target.checked }); }} />Enabled</label>}
+      {!rule.builtin && <>
+        <F label="Rule name" name="rname" value={draft.name} onChange={(e: any) => patch({ name: e.target.value })} />
+        <div className="row2">
+          <label className="field"><span>Apply to</span>
+            <label className="toggle"><input type="checkbox" checked={draft.views.includes('wbs')} onChange={() => toggleView('wbs')} />WBS chart</label>
+            <label className="toggle"><input type="checkbox" checked={draft.views.includes('network')} onChange={() => toggleView('network')} />Network diagram</label>
+          </label>
+          <label className="field"><span>Scope</span>
+            <select className="sel" value={draft.scope} onChange={e => patch({ scope: e.target.value as BoxRule['scope'] })}>
+              <option value="partial">Partial — only the attributes set below</option>
+              <option value="full">Full — override everything set below</option>
+            </select>
+          </label>
+        </div>
+        <p className="muted">Partial rules merge attribute by attribute (several can apply at once); a full rule replaces the merged result wholesale. Evaluation order = list order.</p>
+        <div className="field"><span>Conditions (combined with AND)</span>
+          <div className="mini-list">
+            {draft.conditions.map((c, k) => <CondRow key={k} c={c} onChange={nc => patch({ conditions: draft.conditions.map((x, i) => i === k ? nc : x) })} onRemove={() => patch({ conditions: draft.conditions.filter((_, i) => i !== k) })} />)}
+            <button type="button" className="btn ghost" onClick={() => patch({ conditions: draft.conditions.concat([{ field: 'percentComplete', op: 'gte', value: 50 }]) })}><Icon name="plus" />Add condition</button>
+          </div>
+        </div>
+        <div className="field"><span>Border color</span>
+          <ColorPicker value={draft.style.borderColor || ''} onChange={v => patchStyle(v ? { borderColor: v } : { borderColor: undefined, borderWidth: undefined, borderDash: undefined })} />
+        </div>
+        <div className="row3">
+          <label className="field"><span>Border width</span>
+            <select className="sel" value={draft.style.borderWidth || ''} onChange={e => patchStyle({ borderWidth: e.target.value ? +e.target.value as 1 | 2 | 3 : undefined })}>
+              <option value="">Not set</option><option value="1">1 px</option><option value="2">2 px</option><option value="3">3 px</option>
+            </select>
+          </label>
+          <label className="field"><span>Line style</span>
+            <select className="sel" value={draft.style.borderDash || ''} onChange={e => patchStyle({ borderDash: e.target.value as BoxStyle['borderDash'] })}>
+              <option value="">Not set</option><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option>
+            </select>
+          </label>
+          <label className="field"><span>Bold text</span>
+            <label className="toggle"><input type="checkbox" checked={!!draft.style.bold} onChange={e => patchStyle({ bold: e.target.checked || undefined })} />Bold</label>
+          </label>
+        </div>
+        <div className="field"><span>Fill color</span>
+          <ColorPicker value={draft.style.fillColor || ''} allowTransparent onChange={v => patchStyle({ fillColor: v || undefined })} />
+        </div>
+        <div className="field"><span>Text color</span>
+          <ColorPicker value={draft.style.textColor || ''} onChange={v => patchStyle({ textColor: v || undefined })} />
+        </div>
+        <div className="field"><span>Shadow color (empty = no shadow)</span>
+          <ColorPicker value={draft.style.shadowColor || ''} onChange={v => patchStyle({ shadowColor: v || undefined, shadowX: v ? (draft.style.shadowX ?? 3) : undefined, shadowY: v ? (draft.style.shadowY ?? 3) : undefined })} />
+        </div>
+        <div className="row2">
+          <F label="Shadow offset X (-4..4)" name="shx" type="number" min={-4} max={4} value={draft.style.shadowX ?? 3} onChange={(e: any) => patchStyle({ shadowX: Math.max(-4, Math.min(4, +e.target.value || 0)) })} />
+          <F label="Shadow offset Y (-4..4)" name="shy" type="number" min={-4} max={4} value={draft.style.shadowY ?? 3} onChange={(e: any) => patchStyle({ shadowY: Math.max(-4, Math.min(4, +e.target.value || 0)) })} />
+        </div>
+      </>}
+    </Modal>
+  );
+}
+
+function BoxStylesDialog() {
+  const st = useStore();
+  const rules = st.p.boxRules || [];
+  const [edit, setEdit] = useState<{ index: number; rule: BoxRule } | null>(null);
+  const commit = (fn: (rs: BoxRule[]) => void) => {
+    const rs = rules.map(r => ({ ...r, style: { ...r.style } })) as BoxRule[];
+    fn(rs);
+    ops.saveBoxRules(rs);
+  };
+  const move = (i: number, d: number) => {
+    const j = i + d;
+    if (j < 0 || j >= rules.length) return;
+    commit(rs => { const t = rs[i]; rs[i] = rs[j]; rs[j] = t; });
+  };
+  return (
+    <Modal title="Box style rules" okLabel="Done" onSubmit={() => { }} backdropClose>
+      <p className="muted">Rules restyle WBS and network boxes. They are evaluated top to bottom: matching <b>partial</b> rules merge attribute by attribute, then the first matching <b>full</b> rule overrides the result. A per-task custom color beats every rule.</p>
+      <div className="rule-list">
+        {rules.map((r, i) => <div className="rule-row" key={r.id}>
+          <input type="checkbox" aria-label={'Enable ' + r.name} checked={r.enabled} onChange={() => commit(rs => { rs[i].enabled = !rs[i].enabled; })} />
+          <div className="rule-main">
+            <span className="rule-name">{r.name}{r.builtin && <span className="rule-badge">built-in</span>}<span className="rule-badge">{r.scope}</span><span className="rule-badge">{r.views.join(' + ')}</span></span>
+            <span className="rule-cond">{condSummary(r, st.p)}</span>
+          </div>
+          <div className="rule-prev" style={previewStyle(r.style)}>Aa</div>
+          <button type="button" className="icon-btn" title="Move up" aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)}><Icon name="up" /></button>
+          <button type="button" className="icon-btn" title="Move down" aria-label="Move down" disabled={i === rules.length - 1} onClick={() => move(i, 1)}><Icon name="down" /></button>
+          <button type="button" className="icon-btn" title="Edit" aria-label="Edit" onClick={() => setEdit({ index: i, rule: r })}><Icon name="settings" /></button>
+          <button type="button" className="icon-btn" title="Duplicate" aria-label="Duplicate" onClick={() => commit(rs => { rs.splice(i + 1, 0, { ...r, id: 'r' + Date.now().toString(36), name: r.name + ' copy', builtin: false }); })}><Icon name="copy" /></button>
+          <button type="button" className="icon-btn" title={r.builtin ? 'Built-in rules cannot be deleted' : 'Delete'} aria-label="Delete" disabled={r.builtin} onClick={() => commit(rs => { rs.splice(i, 1); })}><Icon name="trash" /></button>
+        </div>)}
+      </div>
+      <div className="dlg-foot" style={{ justifyContent: 'flex-start', paddingLeft: 0, paddingRight: 0 }}>
+        <button type="button" className="btn" disabled={rules.length >= BS_MAX} onClick={() => setEdit({ index: -1, rule: newRuleDraft() })}><Icon name="plus" />New rule</button>
+        <span className="muted">{rules.length} / {BS_MAX} rules</span>
+      </div>
+      {edit && <RuleEditor rule={edit.rule}
+        onClose={() => setEdit(null)}
+        onSave={r => {
+          if (edit.index >= 0) commit(rs => { rs[edit.index] = r; }); else ops.saveBoxRules(rules.concat([r]));
+          if (!r.builtin) setEdit(null);
+        }} />}
+    </Modal>
+  );
+}
+
+function BoxColorDialog({ uids }: { uids: number[] }) {
+  const st = useStore();
+  const t = st.p.tasks.find(x => x.uid === uids[0]);
+  const [color, setColor] = useState(t?.customStyle?.fillColor || '');
+  return (
+    <Modal title={'Custom box color — ' + (uids.length > 1 ? uids.length + ' tasks' : (t?.name || 'task'))} okLabel="Apply" onSubmit={() => { ops.setCustomStyle(uids, color ? { fillColor: color } : null); }}>
+      <div className="field"><span>Fill color (overrides all rules)</span>
+        <ColorPicker value={color} allowTransparent onChange={setColor} />
+      </div>
+      <p className="muted">Leave the color empty to clear the custom style and go back to rule-driven styling.</p>
+    </Modal>
+  );
+}
+
 export default function DialogHost() {
   const dialog = useStore(s => s.dialog);
   if (!dialog) return null;
@@ -339,6 +586,8 @@ export default function DialogHost() {
     case 'share': return <ShareDialog />;
     case 'confirm': return <ConfirmDialog {...dialog.props} />;
     case 'wbsbox': return <WbsBoxDialog />;
+    case 'boxstyles': return <BoxStylesDialog />;
+    case 'boxcolor': return <BoxColorDialog uids={dialog.props.uids} />;
     default: return null;
   }
 }

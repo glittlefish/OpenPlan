@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import OP from '../core';
 import { useApp, useStore, S } from '../store';
 import { runAction, viewSvgString } from '../lib/actions';
-import { addLink, addTaskNear, copyTasks, hasClip, moveSubtreeTo, pasteTasks, removeNetPos, resetNetLayout, setNetPos } from '../lib/taskOps';
+import { addLink, addTaskNear, copyTasks, hasClip, moveSubtreeTo, pasteTasks, removeNetPos, resetNetLayout, setCustomStyle, setNetPos } from '../lib/taskOps';
 import Icon from '../components/Icon';
 import ContextMenu, { type CtxItem } from '../components/ContextMenu';
 
@@ -302,8 +302,12 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMo
   );
 }
 
-function zoomBy(kind: 'in' | 'out' | 'fit') {
-  const st = S();
+// Manual box coloring applies to the whole selection when the right-clicked node is part of it.
+function styleTargets(st: { sel: number[] }, uid: number): number[] {
+  return st.sel.includes(uid) ? st.sel : [uid];
+}
+
+function zoomBy(kind: 'in' | 'out' | 'fit') {  const st = S();
   if (kind === 'fit') {
     const box = document.getElementById('canvas'), el = box?.querySelector('svg');
     if (!box || !el) return;
@@ -351,6 +355,9 @@ export function NetworkView() {
     { hr: true },
     { label: 'Reset node position', icon: 'fit', disabled: !(uid in (st.p.netPos || {})), onClick: () => removeNetPos(uid) },
     { label: 'Reset layout', icon: 'fit', onClick: () => resetNetLayout() },
+    { hr: true },
+    { label: 'Custom box color…', icon: 'sparkle', onClick: () => st.openDialog('boxcolor', { uids: st.sel.includes(uid) ? st.sel : [uid] }) },
+    { label: 'Clear custom style', icon: 'x', disabled: !styleTargets(st, uid).some(u => st.p.tasks.find(t => t.uid === u)?.customStyle), onClick: () => setCustomStyle(styleTargets(st, uid), null) },
   ];
   return (
     <div className="view">
@@ -373,6 +380,7 @@ export function NetworkView() {
           </div>}
         </div>
         <button className="btn" title="Clear manual node positions and restore the automatic layout" onClick={() => resetNetLayout()}><Icon name="fit" />Reset layout</button>
+        <button className="btn" onClick={() => st.openDialog('boxstyles')}><Icon name="sparkle" />Box styles</button>
         <span className="spacer" /><ZoomTools />
       </div>
       {svg ? <Canvas svg={svg} nodeClass="nnode" openMode="dialog"
@@ -428,6 +436,9 @@ export function WbsView() {
     // Copy the whole selection when the right-clicked node is part of it, else just that node.
     { label: 'Copy', icon: 'copy', onClick: () => copyTasks(st.sel.includes(uid) ? st.sel : [uid]) },
     { label: 'Paste', icon: 'paste', disabled: !hasClip(), onClick: () => pasteAt(uid) },
+    { hr: true },
+    { label: 'Custom box color…', icon: 'sparkle', onClick: () => st.openDialog('boxcolor', { uids: styleTargets(st, uid) }) },
+    { label: 'Clear custom style', icon: 'x', disabled: !styleTargets(st, uid).some(u => st.p.tasks.find(t => t.uid === u)?.customStyle), onClick: () => setCustomStyle(styleTargets(st, uid), null) },
   ];
   return (
     <div className="view">
@@ -444,6 +455,7 @@ export function WbsView() {
         <span className="muted">Show levels</span>
         <div className="seg">{levels.map(l => <button key={l} className={Math.min(st.wbsDepth, maxLv) === l ? 'on' : ''} onClick={() => st.setUI({ wbsDepth: l })}>{l}</button>)}</div>
         <button className="btn" onClick={() => st.openDialog('wbsbox')}><Icon name="layers" />Box content</button>
+        <button className="btn" onClick={() => st.openDialog('boxstyles')}><Icon name="sparkle" />Box styles</button>
         <span className="spacer" /><ZoomTools />
       </div>
       {svg ? <Canvas svg={svg} nodeClass="wnode" openMode="dialog"

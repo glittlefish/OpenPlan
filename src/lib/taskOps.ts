@@ -1,6 +1,6 @@
 import OP from '../core';
 import { ask, S, focusKey, rowByUid } from '../store';
-import type { Project, Task } from '../types';
+import type { BoxRule, BoxStyle, Project, Task } from '../types';
 
 const U = OP.util, M = OP.model;
 
@@ -438,4 +438,24 @@ export function resetNetLayout() {
   const st = S();
   if (!st.p.netPos || !Object.keys(st.p.netPos).length) return;
   st.commit(p => { p.netPos = {}; });
+}
+
+// ---- Box style rules (PRD M14) ----
+
+// Replace the whole rule list; array order is the evaluation priority.
+export function saveBoxRules(rules: BoxRule[]) {
+  const st = S();
+  st.commit(p => { p.boxRules = rules; });
+}
+
+// Manual per-task coloring: writes task.customStyle, which beats every rule.
+export function setCustomStyle(uids: number[], style: BoxStyle | null) {
+  const st = S();
+  st.commit(p => {
+    p.tasks.forEach(t => {
+      if (!uids.includes(t.uid)) return;
+      if (style) t.customStyle = { ...(t.customStyle || {}), ...style };
+      else t.customStyle = null;
+    });
+  });
 }
