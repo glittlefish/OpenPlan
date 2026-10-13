@@ -236,6 +236,14 @@ OP.model = (function () {
     });
     if (!isObj(p.baseline) || !isObj(p.baseline.tasks)) p.baseline = null;
     else p.baseline.savedAt = str(p.baseline.savedAt);
+    // Network diagram: manual node positions — keep only valid entries for existing tasks.
+    var np = isObj(p.netPos) ? p.netPos : {};
+    var good = {};
+    p.tasks.forEach(function (t) {
+      var q = np[t.uid];
+      if (isObj(q) && isFinite(+q.x) && isFinite(+q.y)) good[t.uid] = { x: +q.x, y: +q.y };
+    });
+    p.netPos = good;
     p.version = 2;
     normalizeLevels(p);
     return p;

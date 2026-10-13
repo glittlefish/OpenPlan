@@ -415,3 +415,27 @@ export function addResource() {
   st.setView('resources');
   focusKey('r' + uid + ':name');
 }
+
+// ---- Network diagram: manual node positions (persisted in project.netPos) ----
+
+export function setNetPos(uid: number, x: number, y: number): boolean {
+  const st = S();
+  if (st.p.tasks.findIndex(t => t.uid === uid) < 0) return false;
+  st.commit(p => {
+    if (!p.netPos) p.netPos = {};
+    p.netPos[uid] = { x: Math.max(0, Math.round(x)), y: Math.max(0, Math.round(y)) };
+  });
+  return true;
+}
+
+export function removeNetPos(uid: number) {
+  const st = S();
+  if (!st.p.netPos || !(uid in st.p.netPos)) return;
+  st.commit(p => { delete p.netPos![uid]; });
+}
+
+export function resetNetLayout() {
+  const st = S();
+  if (!st.p.netPos || !Object.keys(st.p.netPos).length) return;
+  st.commit(p => { p.netPos = {}; });
+}

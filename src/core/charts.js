@@ -267,6 +267,19 @@ OP.charts = (function () {
       var colH = col.length * NH + (col.length - 1) * GY, oy = PAD + LEG + (maxRows * NH + (maxRows - 1) * GY - colH) / 2;
       col.forEach(function (r, k) { at[r.i] = { x: PAD + SW + GX + ci * (NW + GX), y: oy + k * (NH + GY) }; });
     });
+    // Manual position overrides (dragged nodes) win over the computed layout.
+    var np = (o.p && o.p.netPos && typeof o.p.netPos === 'object') ? o.p.netPos : {};
+    rows.forEach(function (r) {
+      var q = np[r.task.uid];
+      if (q && typeof q === 'object' && isFinite(+q.x) && isFinite(+q.y)) at[r.i] = { x: +q.x, y: +q.y };
+    });
+    // Grow the canvas so dragged nodes stay inside the drawing area.
+    rows.forEach(function (r) {
+      if (!np[r.task.uid]) return;
+      var q = at[r.i];
+      W = Math.max(W, q.x + NW + PAD);
+      H = Math.max(H, q.y + NH + PAD);
+    });
     var midY = PAD + LEG + (maxRows * NH + (maxRows - 1) * GY) / 2;
     var startN = { x: PAD, y: midY }, endN = { x: W - PAD - SW, y: midY };
 

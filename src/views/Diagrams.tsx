@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import OP from '../core';
 import { useApp, useStore, S } from '../store';
 import { runAction, viewSvgString } from '../lib/actions';
-import { addLink, addTaskNear, copyTasks, hasClip, moveSubtreeTo, pasteTasks } from '../lib/taskOps';
+import { addLink, addTaskNear, copyTasks, hasClip, moveSubtreeTo, pasteTasks, removeNetPos, resetNetLayout, setNetPos } from '../lib/taskOps';
 import Icon from '../components/Icon';
 import ContextMenu, { type CtxItem } from '../components/ContextMenu';
 
@@ -12,12 +12,14 @@ import ContextMenu, { type CtxItem } from '../components/ContextMenu';
 // openMode 'dialog' (Network/WBS): click only selects; double-click opens a details dialog.
 // dragMove (WBS): pointer-drag a node onto another node to move that task's subtree.
 // dragLink (Network): pointer-drag a node onto another node to create a dependency.
+// dragPos (Network): dropping a dragged node on empty canvas moves it there (netPos override).
 // onNodeContextMenu: right-click on a node (uid) or on empty canvas (null) at the cursor position.
-function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMove, dragLink }: {
+function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMove, dragLink, dragPos }: {
   svg: string; nodeClass?: string; openMode?: 'drawer' | 'dialog';
   onNodeContextMenu?: (uid: number | null, x: number, y: number) => void;
   dragMove?: (uid: number, targetUid: number) => boolean;
   dragLink?: (fromUid: number, toUid: number) => boolean;
+  dragPos?: (uid: number, x: number, y: number) => boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const zoom = useStore(s => s.netZoom);
@@ -29,6 +31,8 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMo
   dragMoveRef.current = dragMove;
   const dragLinkRef = useRef(dragLink);
   dragLinkRef.current = dragLink;
+  const dragPosRef = useRef(dragPos);
+  dragPosRef.current = dragPos;
   const dragEnabled = !!dragMove && !!nodeClass;
   const linkEnabled = !!dragLink && !!nodeClass;
   useLayoutEffect(() => {
@@ -145,6 +149,8 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMo
   }, [dragEnabled, nodeClass, svg]);
   // Drag-to-link (Network): drag from one node to another to create an FS dependency.
   // A dashed preview line follows the cursor; valid targets highlight, loop targets turn red.
+  // With dragPos, dropping on empty canvas moves the node there instead (netPos override):
+  // the node follows the cursor via a live transform preview, committed on release.
   useEffect(() => {
     const el = ref.current;
     if (!el || !linkEnabled) return;
@@ -152,6 +158,7 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMo
     const svgEl = () => el.querySelector('svg') as SVGSVGElement | null;
     let active = false, dragging = false, src: Element | null = null, target: Element | null = null;
     let sx = 0, sy = 0, uid = 0, bad = new Set<number>(), line: SVGPathElement | null = null;
+    let base = { x: 0, y: 0 }, dx = 0, dy = 0;
     // client -> SVG user-space coordinates (the svg width attribute is scaled by zoom, the viewBox is not).
     const toSvg = (x: number, y: number) => {
       const s = svgEl();
@@ -169,6 +176,9 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMo
       if (!g) return;
       active = true; dragging = false; src = g; target = null;
       sx = e.clientX; sy = e.clientY; uid = +(g as SVGElement).dataset.uid!;
+      dx = 0; dy = 0;
+      const rect0 = g.querySelector('rect');
+      base = rect0 ? { x: +rect0.getAttribute('x')!, y: +rect0.getAttribute('y')! } : { x: 0, y: 0 };
       // Everything upstream of the source: linking back into it would loop.
       const p = S().p, idx = OP.model.indexByUid(p);
       bad = new Set<number>([uid]);
@@ -186,6 +196,9 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMo
         if (Math.hypot(e.clientX - sx, e.clientY - sy) < 5) return; // still a click
         dragging = true;
         el.style.userSelect = 'none';
+        // pointer-events:none keeps elementFromPoint on the node under the cursor,
+        // so hovering another node still reads as a link target while moving.
+        src.classList.add('dragging');
         const s = svgEl();
         if (s) {
           line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -195,6 +208,12 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMo
         }
       }
       e.preventDefault();
+      if (dragPosRef.current) {
+        const s = svgEl();
+        const k = s ? s.getBoundingClientRect().width / (+s.dataset.w! || 1) : 1;
+        dx = (e.clientX - sx) / k; dy = (e.clientY - sy) / k;
+        src.setAttribute('transform', 'translate(' + dx + ',' + dy + ')');
+      }
       if (line) {
         const r = src.getBoundingClientRect(), a = toSvg(r.right, r.top + r.height / 2), b = toSvg(e.clientX, e.clientY);
         const mx = (a.x + b.x) / 2;
@@ -221,15 +240,19 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, dragMo
         const drop = target as SVGElement | null; // clearHi() nulls target, so capture first
         const dropUid = drop ? +drop.dataset.uid! : 0;
         clearHi();
+        src?.classList.remove('dragging');
+        src?.removeAttribute('transform');
         if (drop && dragLinkRef.current && dragLinkRef.current(uid, dropUid)) S().select([uid], uid);
+        else if (!drop && dragPosRef.current) dragPosRef.current(uid, base.x + dx, base.y + dy);
       }
-      active = false; dragging = false; src = null; bad = new Set();
+      active = false; dragging = false; src = null; bad = new Set(); dx = 0; dy = 0;
     };
     el.addEventListener('pointerdown', onDown);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     return () => {
       clearHi();
+      if (src) { src.classList.remove('dragging'); src.removeAttribute('transform'); }
       el.removeEventListener('pointerdown', onDown);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
@@ -305,6 +328,30 @@ export function NetworkView() {
   const st = useApp();
   const svg = useMemo(() => viewSvgString(st), [st.p, st.s, st.netScope, st.netDates, st.critical, st.view]);
   const tops = st.s.rows.filter((r: any) => r.summary && r.task.level === 1);
+  const [addMenu, setAddMenu] = useState(false);
+  const [ctx, setCtx] = useState<{ uid: number | null; x: number; y: number } | null>(null);
+  const addWrap = useRef<HTMLDivElement>(null);
+  const selUid = st.sel.length ? st.sel[st.sel.length - 1] : null;
+  useEffect(() => {
+    if (!addMenu) return;
+    const close = (e: PointerEvent) => { if (!addWrap.current?.contains(e.target as Node)) setAddMenu(false); };
+    window.addEventListener('pointerdown', close);
+    return () => window.removeEventListener('pointerdown', close);
+  }, [addMenu]);
+  const ctxItems = (uid: number | null): CtxItem[] => uid == null ? [
+    { label: 'Reset layout', icon: 'fit', onClick: () => resetNetLayout() },
+  ] : [
+    { label: 'Insert task after', icon: 'plus', onClick: () => addTaskNear(uid, 'after') },
+    { label: 'Insert task before', icon: 'plus', onClick: () => addTaskNear(uid, 'before') },
+    { label: 'Add subtask', icon: 'indent', onClick: () => addTaskNear(uid, 'child') },
+    { hr: true },
+    // Copy the whole selection when the right-clicked node is part of it, else just that node.
+    { label: 'Copy', icon: 'copy', onClick: () => copyTasks(st.sel.includes(uid) ? st.sel : [uid]) },
+    { label: 'Paste', icon: 'paste', disabled: !hasClip(), onClick: () => pasteTasks(uid) },
+    { hr: true },
+    { label: 'Reset node position', icon: 'fit', disabled: !(uid in (st.p.netPos || {})), onClick: () => removeNetPos(uid) },
+    { label: 'Reset layout', icon: 'fit', onClick: () => resetNetLayout() },
+  ];
   return (
     <div className="view">
       <div className="view-head"><h1>Network diagram</h1><span className="sub">Activity-on-node with ES, EF, LS, LF and total slack</span></div>
@@ -318,9 +365,22 @@ export function NetworkView() {
           <button className={st.netDates ? 'on' : ''} onClick={() => st.setUI({ netDates: true })}>Dates</button>
         </div>
         <label className="toggle"><input type="checkbox" checked={st.critical} onChange={e => st.setUI({ critical: e.target.checked })} />Critical path</label>
+        <div className="menu-wrap" ref={addWrap}>
+          <button className="btn" aria-haspopup="menu" aria-expanded={addMenu} onClick={() => setAddMenu(o => !o)}><Icon name="plus" />New task ▾</button>
+          {addMenu && <div className="menu open" role="menu">
+            <button role="menuitem" onClick={() => { setAddMenu(false); addTaskNear(selUid, 'after'); }}><Icon name="plus" />New task (after selection)</button>
+            <button role="menuitem" disabled={!selUid} onClick={() => { setAddMenu(false); if (selUid) addTaskNear(selUid, 'before'); }}><Icon name="plus" />New predecessor (before selection)</button>
+          </div>}
+        </div>
+        <button className="btn" title="Clear manual node positions and restore the automatic layout" onClick={() => resetNetLayout()}><Icon name="fit" />Reset layout</button>
         <span className="spacer" /><ZoomTools />
       </div>
-      {svg ? <Canvas svg={svg} nodeClass="nnode" openMode="dialog" dragLink={(from, to) => addLink(from, to)} /> : <Empty title="Nothing to show" text="Add tasks in the Gantt view first." />}
+      {svg ? <Canvas svg={svg} nodeClass="nnode" openMode="dialog"
+        dragLink={(from, to) => addLink(from, to)}
+        dragPos={(uid, x, y) => setNetPos(uid, x, y)}
+        onNodeContextMenu={(uid, x, y) => setCtx({ uid, x, y })} />
+        : <Empty title="Nothing to show" text="Add tasks in the Gantt view first." />}
+      {ctx && <ContextMenu x={ctx.x} y={ctx.y} items={ctxItems(ctx.uid)} onClose={() => setCtx(null)} />}
     </div>
   );
 }

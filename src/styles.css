@@ -189,6 +189,7 @@ img.logo { object-fit: contain; }
 .ctx-backdrop { position: fixed; inset: 0; z-index: 55; }
 .wnode.drop-target rect { stroke: var(--accent); stroke-width: 2; }
 .wnode.dragging { opacity: 0.45; }
+.nnode.dragging { opacity: 0.6; pointer-events: none; } /* moved node follows the cursor; hit-testing reads what is under it */
 .cols-menu, #colMenu { min-width: 340px; max-height: 70vh; overflow: auto; }
 .col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 6px; padding: 2px 6px 4px; }
 .chk { display: flex; align-items: center; gap: 6px; padding: 3px 4px; cursor: pointer; font-size: var(--fs-base); }

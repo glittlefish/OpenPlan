@@ -65,6 +65,8 @@ export interface Project {
   nextUid: number;
   tasks: Task[];
   resources: Resource[];
+  /** Network diagram: manual node positions (uid -> SVG coordinates), empty when layout is automatic. */
+  netPos?: Record<number, { x: number; y: number }>;
 }
 
 /* Computed schedule rows and results come from the JavaScript engine (core.js). */
