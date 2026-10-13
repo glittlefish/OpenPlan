@@ -2,6 +2,7 @@ import OP from '../core';
 import { S, VIEW_NAMES, ask, PREV_STORE, type Store } from '../store';
 import { gridItems } from './grid';
 import { toXlsx } from './xlsx';
+import { toMsProjectXml, fromMsProjectXml } from './msproject';
 import { fromTemplate, type Template } from './templates';
 import type { Project } from '../types';
 
@@ -126,6 +127,11 @@ export function runAction(a: string) {
       st.toast('Excel file downloaded');
       break;
     case 'csv': U.download(name + '-tasks.csv', '﻿' + IO.toCSV(st.p), 'text/csv'); st.toast('CSV downloaded'); break;
+    case 'mspxml':
+      U.download(name + '.xml', toMsProjectXml(st.p), 'application/xml');
+      st.toast('MS Project XML downloaded');
+      break;
+    case 'import-msp': importMsProject(); break;
     case 'png': case 'svg': {
       const svg = viewSvgString(st);
       if (!svg) { st.toast('Switch to Gantt, Network, WBS or Team Chart to export an image.'); return; }
@@ -165,6 +171,32 @@ function pickFile(insert: boolean) {
         } else st.replaceProject(p, 'Opened ' + file.name);
       } catch (e: any) {
         st.toast('Could not open file: ' + e.message, true);
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+// Import a Microsoft Project XML file (PRD 6.2.4): tolerant parse, then load as the
+// current project with an import report.
+function importMsProject() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.xml,application/xml,text/xml';
+  input.onchange = () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const st = S();
+      try {
+        const res = fromMsProjectXml(String(reader.result));
+        handle = null;
+        loadProject(res.project, 'Imported ' + res.counts.tasks + ' task(s), ' + res.counts.links + ' link(s), ' + res.counts.resources + ' resource(s) from ' + file.name);
+        if (res.warnings.length) st.toast('Imported with notes: ' + res.warnings.slice(0, 3).join('; ') + (res.warnings.length > 3 ? '…' : ''), true);
+      } catch (e: any) {
+        st.toast('Could not import MS Project file: ' + e.message, true);
       }
     };
     reader.readAsText(file);

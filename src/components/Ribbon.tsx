@@ -238,6 +238,7 @@ function ReportTab({ st }: { st: Store }) {
         <Small icon="image" label="Picture (PNG)" disabled={!hasImage(st)} onClick={() => runAction('png')} />
         <Small icon="table" label="Excel (.xlsx)" onClick={() => runAction('xlsx')} />
         <Small icon="table" label="CSV" onClick={() => runAction('csv')} />
+        <Small icon="file" label="MS Project (.xml)" onClick={() => runAction('mspxml')} />
       </Stack>
     </Group>
   </>;
