@@ -5,6 +5,7 @@ import { runAction, viewSvgString } from '../lib/actions';
 import { addAnnotation, addLink, addTaskNear, copyTasks, hasClip, moveSubtreeTo, pasteTasks, removeAnnotation, removeNetPos, resetNetLayout, setCustomStyle, setNetPos, updateAnnotation } from '../lib/taskOps';
 import Icon from '../components/Icon';
 import ContextMenu, { type CtxItem } from '../components/ContextMenu';
+import { t } from '../i18n';
 
 // Zoomable SVG canvas. Ctrl+wheel zooms, a plain wheel scrolls natively.
 // Dragging empty canvas pans (scroll), with a grab / grabbing cursor.
@@ -510,13 +511,13 @@ function annoCtxItems(st: { sel: number[]; p: { annotations?: any[] } }, id: str
   const a = st.p.annotations?.find(x => x.id === id);
   if (!a) return [];
   return [
-    { label: 'Edit text', icon: 'note', onClick: () => S().setUI({ annoSel: id, annoEdit: id }) },
+    { label: t('Edit text'), icon: 'note', onClick: () => S().setUI({ annoSel: id, annoEdit: id }) },
     { hr: true },
-    { label: 'Bind to selected task', icon: 'link', disabled: st.sel.length !== 1, onClick: () => bindAnnoTask(id, st.sel[0]) },
-    { label: 'Group selected tasks', icon: 'grid', disabled: !st.sel.length, onClick: () => updateAnnotation(id, { mode: 'group' as const, uids: [...st.sel] }) },
-    { label: 'Free position', icon: 'pin', disabled: a.mode === 'free', onClick: () => freeAnno(id) },
+    { label: t('Bind to selected task'), icon: 'link', disabled: st.sel.length !== 1, onClick: () => bindAnnoTask(id, st.sel[0]) },
+    { label: t('Group selected tasks'), icon: 'grid', disabled: !st.sel.length, onClick: () => updateAnnotation(id, { mode: 'group' as const, uids: [...st.sel] }) },
+    { label: t('Free position'), icon: 'pin', disabled: a.mode === 'free', onClick: () => freeAnno(id) },
     { hr: true },
-    { label: 'Delete text box', icon: 'trash', onClick: () => removeAnnotation(id) },
+    { label: t('Delete text box'), icon: 'trash', onClick: () => removeAnnotation(id) },
   ];
 }
 
@@ -530,9 +531,9 @@ function zoomBy(kind: 'in' | 'out' | 'fit') {  const st = S();
 
 function ZoomTools() {
   return <>
-    <button className="icon-btn" title="Zoom out" aria-label="Zoom out" onClick={() => zoomBy('out')}><Icon name="zout" /></button>
-    <button className="icon-btn" title="Fit to window" aria-label="Fit to window" onClick={() => zoomBy('fit')}><Icon name="fit" /></button>
-    <button className="icon-btn" title="Zoom in" aria-label="Zoom in" onClick={() => zoomBy('in')}><Icon name="zin" /></button>
+    <button className="icon-btn" title={t('Zoom out')} aria-label={t('Zoom out')} onClick={() => zoomBy('out')}><Icon name="zout" /></button>
+    <button className="icon-btn" title={t('Fit to window')} aria-label={t('Fit to window')} onClick={() => zoomBy('fit')}><Icon name="fit" /></button>
+    <button className="icon-btn" title={t('Zoom in')} aria-label={t('Zoom in')} onClick={() => zoomBy('in')}><Icon name="zin" /></button>
     <button className="btn" onClick={() => runAction('png')}><Icon name="image" />PNG</button>
   </>;
 }
@@ -543,7 +544,7 @@ const Empty = ({ title, text }: { title: string; text: string }) => (
 
 export function NetworkView() {
   const st = useApp();
-  const svg = useMemo(() => viewSvgString(st), [st.p, st.s, st.netScope, st.netDates, st.critical, st.view]);
+  const svg = useMemo(() => viewSvgString(st), [st.p, st.s, st.netScope, st.netDates, st.critical, st.view, st.lang]);
   const tops = st.s.rows.filter((r: any) => r.summary && r.task.level === 1);
   const [addMenu, setAddMenu] = useState(false);
   const [ctx, setCtx] = useState<{ uid: number | null; x: number; y: number } | null>(null);
@@ -557,47 +558,47 @@ export function NetworkView() {
     return () => window.removeEventListener('pointerdown', close);
   }, [addMenu]);
   const ctxItems = (uid: number | null): CtxItem[] => uid == null ? [
-    { label: 'Add text box', icon: 'note', onClick: () => addTextBoxAt('network', ctx?.x, ctx?.y) },
-    { label: 'Reset layout', icon: 'fit', onClick: () => resetNetLayout() },
+    { label: t('Add text box'), icon: 'note', onClick: () => addTextBoxAt('network', ctx?.x, ctx?.y) },
+    { label: t('Reset layout'), icon: 'fit', onClick: () => resetNetLayout() },
   ] : [
-    { label: 'Insert task after', icon: 'plus', onClick: () => addTaskNear(uid, 'after') },
-    { label: 'Insert task before', icon: 'plus', onClick: () => addTaskNear(uid, 'before') },
-    { label: 'Add subtask', icon: 'indent', onClick: () => addTaskNear(uid, 'child') },
+    { label: t('Insert task after'), icon: 'plus', onClick: () => addTaskNear(uid, 'after') },
+    { label: t('Insert task before'), icon: 'plus', onClick: () => addTaskNear(uid, 'before') },
+    { label: t('Add subtask'), icon: 'indent', onClick: () => addTaskNear(uid, 'child') },
     { hr: true },
     // Copy the whole selection when the right-clicked node is part of it, else just that node.
-    { label: 'Copy', icon: 'copy', onClick: () => copyTasks(st.sel.includes(uid) ? st.sel : [uid]) },
-    { label: 'Paste', icon: 'paste', disabled: !hasClip(), onClick: () => pasteTasks(uid) },
+    { label: t('Copy'), icon: 'copy', onClick: () => copyTasks(st.sel.includes(uid) ? st.sel : [uid]) },
+    { label: t('Paste'), icon: 'paste', disabled: !hasClip(), onClick: () => pasteTasks(uid) },
     { hr: true },
-    { label: 'Reset node position', icon: 'fit', disabled: !(uid in (st.p.netPos || {})), onClick: () => removeNetPos(uid) },
-    { label: 'Reset layout', icon: 'fit', onClick: () => resetNetLayout() },
+    { label: t('Reset node position'), icon: 'fit', disabled: !(uid in (st.p.netPos || {})), onClick: () => removeNetPos(uid) },
+    { label: t('Reset layout'), icon: 'fit', onClick: () => resetNetLayout() },
     { hr: true },
-    { label: 'Custom box color…', icon: 'sparkle', onClick: () => st.openDialog('boxcolor', { uids: st.sel.includes(uid) ? st.sel : [uid] }) },
-    { label: 'Clear custom style', icon: 'x', disabled: !styleTargets(st, uid).some(u => st.p.tasks.find(t => t.uid === u)?.customStyle), onClick: () => setCustomStyle(styleTargets(st, uid), null) },
-    ...(st.sel.length > 1 ? [{ label: `Batch edit ${st.sel.length} tasks…`, icon: 'settings', onClick: () => st.openDialog('batchedit', { uids: st.sel }) }] : []),
+    { label: t('Custom box color…'), icon: 'sparkle', onClick: () => st.openDialog('boxcolor', { uids: st.sel.includes(uid) ? st.sel : [uid] }) },
+    { label: t('Clear custom style'), icon: 'x', disabled: !styleTargets(st, uid).some(u => st.p.tasks.find(t => t.uid === u)?.customStyle), onClick: () => setCustomStyle(styleTargets(st, uid), null) },
+    ...(st.sel.length > 1 ? [{ label: t('Batch edit {n} tasks…', { n: st.sel.length }), icon: 'settings', onClick: () => st.openDialog('batchedit', { uids: st.sel }) }] : []),
   ];
   return (
     <div className="view">
-      <div className="view-head"><h1>Network diagram</h1><span className="sub">Activity-on-node with ES, EF, LS, LF and total slack</span></div>
+      <div className="view-head"><h1>{t('Network diagram')}</h1><span className="sub">{t('Activity-on-node with ES, EF, LS, LF and total slack')}</span></div>
       <div className="toolbar">
-        <select className="sel" aria-label="Scope" value={st.netScope} onChange={e => st.setUI({ netScope: e.target.value, netZoom: 1 })}>
-          <option value="all">All tasks</option>
+        <select className="sel" aria-label={t('Scope')} value={st.netScope} onChange={e => st.setUI({ netScope: e.target.value, netZoom: 1 })}>
+          <option value="all">{t('All tasks')}</option>
           {tops.map((r: any) => <option key={r.task.uid} value={String(r.task.uid)}>{r.wbs} {r.task.name}</option>)}
         </select>
         <div className="seg">
-          <button className={!st.netDates ? 'on' : ''} onClick={() => st.setUI({ netDates: false })}>Day numbers</button>
-          <button className={st.netDates ? 'on' : ''} onClick={() => st.setUI({ netDates: true })}>Dates</button>
+          <button className={!st.netDates ? 'on' : ''} onClick={() => st.setUI({ netDates: false })}>{t('Day numbers')}</button>
+          <button className={st.netDates ? 'on' : ''} onClick={() => st.setUI({ netDates: true })}>{t('Dates')}</button>
         </div>
-        <label className="toggle"><input type="checkbox" checked={st.critical} onChange={e => st.setUI({ critical: e.target.checked })} />Critical path</label>
+        <label className="toggle"><input type="checkbox" checked={st.critical} onChange={e => st.setUI({ critical: e.target.checked })} />{t('Critical path')}</label>
         <div className="menu-wrap" ref={addWrap}>
-          <button className="btn" aria-haspopup="menu" aria-expanded={addMenu} onClick={() => setAddMenu(o => !o)}><Icon name="plus" />New task ▾</button>
+          <button className="btn" aria-haspopup="menu" aria-expanded={addMenu} onClick={() => setAddMenu(o => !o)}><Icon name="plus" />{t('New task')} ▾</button>
           {addMenu && <div className="menu open" role="menu">
-            <button role="menuitem" onClick={() => { setAddMenu(false); addTaskNear(selUid, 'after'); }}><Icon name="plus" />New task (after selection)</button>
-            <button role="menuitem" disabled={!selUid} onClick={() => { setAddMenu(false); if (selUid) addTaskNear(selUid, 'before'); }}><Icon name="plus" />New predecessor (before selection)</button>
+            <button role="menuitem" onClick={() => { setAddMenu(false); addTaskNear(selUid, 'after'); }}><Icon name="plus" />{t('New task (after selection)')}</button>
+            <button role="menuitem" disabled={!selUid} onClick={() => { setAddMenu(false); if (selUid) addTaskNear(selUid, 'before'); }}><Icon name="plus" />{t('New predecessor (before selection)')}</button>
           </div>}
         </div>
-        <button className="btn" title="Clear manual node positions and restore the automatic layout" onClick={() => resetNetLayout()}><Icon name="fit" />Reset layout</button>
-        <button className="btn" onClick={() => st.openDialog('boxstyles')}><Icon name="sparkle" />Box styles</button>
-        <button className="btn" title="Insert a text box" onClick={() => addTextBoxAt('network')}><Icon name="note" />Text box</button>
+        <button className="btn" title={t('Clear manual node positions and restore the automatic layout')} onClick={() => resetNetLayout()}><Icon name="fit" />{t('Reset layout')}</button>
+        <button className="btn" onClick={() => st.openDialog('boxstyles')}><Icon name="sparkle" />{t('Box styles')}</button>
+        <button className="btn" title={t('Insert a text box')} onClick={() => addTextBoxAt('network')}><Icon name="note" />{t('Text box')}</button>
         <span className="spacer" /><ZoomTools />
       </div>
       {svg ? <Canvas svg={svg} nodeClass="nnode" openMode="dialog"
@@ -606,7 +607,7 @@ export function NetworkView() {
         annoView="network"
         onNodeContextMenu={(uid, x, y) => setCtx({ uid, x, y })}
         onAnnoContextMenu={(id, x, y) => setActx({ id, x, y })} />
-        : <Empty title="Nothing to show" text="Add tasks in the Gantt view first." />}
+        : <Empty title={t('Nothing to show')} text={t('Add tasks in the Gantt view first.')} />}
       {ctx && <ContextMenu x={ctx.x} y={ctx.y} items={ctxItems(ctx.uid)} onClose={() => setCtx(null)} />}
       {actx && <ContextMenu x={actx.x} y={actx.y} items={annoCtxItems(st, actx.id)} onClose={() => setActx(null)} />}
     </div>
@@ -615,7 +616,7 @@ export function NetworkView() {
 
 export function WbsView() {
   const st = useApp();
-  const svg = useMemo(() => viewSvgString(st, { selected: true }), [st.p, st.s, st.wbsDepth, st.wbsBox, st.view, st.sel]);
+  const svg = useMemo(() => viewSvgString(st, { selected: true }), [st.p, st.s, st.wbsDepth, st.wbsBox, st.view, st.sel, st.lang]);
   const maxLv = st.s.rows.reduce((a: number, r: any) => Math.max(a, r.task.level), 1);
   const levels: number[] = [];
   for (let l = 2; l <= Math.max(2, maxLv); l++) levels.push(l);
@@ -650,37 +651,37 @@ export function WbsView() {
     if (deep > st.wbsDepth) st.setUI({ wbsDepth: deep });
   };
   const ctxItems = (uid: number | null): CtxItem[] => uid == null ? [
-    { label: 'Add text box', icon: 'note', onClick: () => addTextBoxAt('wbs', ctx?.x, ctx?.y) },
+    { label: t('Add text box'), icon: 'note', onClick: () => addTextBoxAt('wbs', ctx?.x, ctx?.y) },
   ] : [
-    { label: 'Insert task before', icon: 'plus', onClick: () => addTaskNear(uid, 'before') },
-    { label: 'Insert task after', icon: 'plus', onClick: () => addTaskNear(uid, 'after') },
-    { label: 'Add subtask', icon: 'indent', onClick: () => addChild(uid) },
+    { label: t('Insert task before'), icon: 'plus', onClick: () => addTaskNear(uid, 'before') },
+    { label: t('Insert task after'), icon: 'plus', onClick: () => addTaskNear(uid, 'after') },
+    { label: t('Add subtask'), icon: 'indent', onClick: () => addChild(uid) },
     { hr: true },
     // Copy the whole selection when the right-clicked node is part of it, else just that node.
-    { label: 'Copy', icon: 'copy', onClick: () => copyTasks(st.sel.includes(uid) ? st.sel : [uid]) },
-    { label: 'Paste', icon: 'paste', disabled: !hasClip(), onClick: () => pasteAt(uid) },
+    { label: t('Copy'), icon: 'copy', onClick: () => copyTasks(st.sel.includes(uid) ? st.sel : [uid]) },
+    { label: t('Paste'), icon: 'paste', disabled: !hasClip(), onClick: () => pasteAt(uid) },
     { hr: true },
-    { label: 'Custom box color…', icon: 'sparkle', onClick: () => st.openDialog('boxcolor', { uids: styleTargets(st, uid) }) },
-    { label: 'Clear custom style', icon: 'x', disabled: !styleTargets(st, uid).some(u => st.p.tasks.find(t => t.uid === u)?.customStyle), onClick: () => setCustomStyle(styleTargets(st, uid), null) },
-    ...(st.sel.length > 1 ? [{ label: `Batch edit ${st.sel.length} tasks…`, icon: 'settings', onClick: () => st.openDialog('batchedit', { uids: st.sel }) }] : []),
+    { label: t('Custom box color…'), icon: 'sparkle', onClick: () => st.openDialog('boxcolor', { uids: styleTargets(st, uid) }) },
+    { label: t('Clear custom style'), icon: 'x', disabled: !styleTargets(st, uid).some(u => st.p.tasks.find(t => t.uid === u)?.customStyle), onClick: () => setCustomStyle(styleTargets(st, uid), null) },
+    ...(st.sel.length > 1 ? [{ label: t('Batch edit {n} tasks…', { n: st.sel.length }), icon: 'settings', onClick: () => st.openDialog('batchedit', { uids: st.sel }) }] : []),
   ];
   return (
     <div className="view">
-      <div className="view-head"><h1>Work breakdown structure</h1>
-        <span className="sub">{st.s.rows.length} work items · {st.s.rows.filter((r: any) => r.task.level === 1).length} top-level packages</span></div>
+      <div className="view-head"><h1>{t('Work breakdown structure')}</h1>
+        <span className="sub">{t('{n} work items · {m} top-level packages', { n: st.s.rows.length, m: st.s.rows.filter((r: any) => r.task.level === 1).length })}</span></div>
       <div className="toolbar">
         <div className="menu-wrap" ref={addWrap}>
-          <button className="btn" aria-haspopup="menu" aria-expanded={addMenu} onClick={() => setAddMenu(o => !o)}><Icon name="plus" />New task ▾</button>
+          <button className="btn" aria-haspopup="menu" aria-expanded={addMenu} onClick={() => setAddMenu(o => !o)}><Icon name="plus" />{t('New task')} ▾</button>
           {addMenu && <div className="menu open" role="menu">
-            <button role="menuitem" onClick={() => { setAddMenu(false); addTaskNear(selUid, 'after'); }}><Icon name="plus" />New task (same level)</button>
-            <button role="menuitem" disabled={!selUid} onClick={() => { setAddMenu(false); if (selUid) addChild(selUid); }}><Icon name="indent" />New subtask</button>
+            <button role="menuitem" onClick={() => { setAddMenu(false); addTaskNear(selUid, 'after'); }}><Icon name="plus" />{t('New task (same level)')}</button>
+            <button role="menuitem" disabled={!selUid} onClick={() => { setAddMenu(false); if (selUid) addChild(selUid); }}><Icon name="indent" />{t('New subtask')}</button>
           </div>}
         </div>
-        <span className="muted">Show levels</span>
+        <span className="muted">{t('Show levels')}</span>
         <div className="seg">{levels.map(l => <button key={l} className={Math.min(st.wbsDepth, maxLv) === l ? 'on' : ''} onClick={() => st.setUI({ wbsDepth: l })}>{l}</button>)}</div>
-        <button className="btn" onClick={() => st.openDialog('wbsbox')}><Icon name="layers" />Box content</button>
-        <button className="btn" onClick={() => st.openDialog('boxstyles')}><Icon name="sparkle" />Box styles</button>
-        <button className="btn" title="Insert a text box" onClick={() => addTextBoxAt('wbs')}><Icon name="note" />Text box</button>
+        <button className="btn" onClick={() => st.openDialog('wbsbox')}><Icon name="layers" />{t('Box content')}</button>
+        <button className="btn" onClick={() => st.openDialog('boxstyles')}><Icon name="sparkle" />{t('Box styles')}</button>
+        <button className="btn" title={t('Insert a text box')} onClick={() => addTextBoxAt('wbs')}><Icon name="note" />{t('Text box')}</button>
         <span className="spacer" /><ZoomTools />
       </div>
       {svg ? <Canvas svg={svg} nodeClass="wnode" openMode="dialog"
@@ -688,7 +689,7 @@ export function WbsView() {
         onAnnoContextMenu={(id, x, y) => setActx({ id, x, y })}
         annoView="wbs"
         dragMove={(uid, target) => moveSubtreeTo(uid, target)} />
-        : <Empty title="No work items yet" text="Build your task outline in the Gantt view; indented tasks become WBS levels." />}
+        : <Empty title={t('No work items yet')} text={t('Build your task outline in the Gantt view; indented tasks become WBS levels.')} />}
       {ctx && <ContextMenu x={ctx.x} y={ctx.y} items={ctxItems(ctx.uid)} onClose={() => setCtx(null)} />}
       {actx && <ContextMenu x={actx.x} y={actx.y} items={annoCtxItems(st, actx.id)} onClose={() => setActx(null)} />}
     </div>
@@ -697,15 +698,15 @@ export function WbsView() {
 
 export function OrgView() {
   const st = useApp();
-  const svg = useMemo(() => viewSvgString(st), [st.p, st.view]);
+  const svg = useMemo(() => viewSvgString(st), [st.p, st.view, st.lang]);
   return (
     <div className="view">
-      <div className="view-head"><h1>Team structure</h1><span className="sub">Built from each person’s “Reports to” field</span></div>
+      <div className="view-head"><h1>{t('Team structure')}</h1><span className="sub">{t('Built from each person’s “Reports to” field')}</span></div>
       <div className="toolbar">
-        <button className="btn" onClick={() => st.setView('resources')}><Icon name="users" />Edit team</button>
+        <button className="btn" onClick={() => st.setView('resources')}><Icon name="users" />{t('Edit team')}</button>
         <span className="spacer" /><ZoomTools />
       </div>
-      {svg ? <Canvas svg={svg} /> : <Empty title="No team members yet" text="Add resources and set who each person reports to." />}
+      {svg ? <Canvas svg={svg} /> : <Empty title={t('No team members yet')} text={t('Add resources and set who each person reports to.')} />}
     </div>
   );
 }

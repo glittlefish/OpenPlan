@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import OP from '../core';
 import { useApp, S, type Store } from '../store';
+import { t } from '../i18n';
 import Icon from './Icon';
 import type { Project, Task } from '../types';
 
@@ -104,7 +105,7 @@ export default function FindBar() {
       const t = p.tasks.find(x => x.uid === uid)!;
       if (!replaceTask(p, t, re, repl, scope)) return false;
     });
-    if (done) st.toast('Replaced in “' + (S().p.tasks.find(x => x.uid === uid)?.name || '') + '”');
+    if (done) st.toast(t('Replaced in “{name}”', { name: S().p.tasks.find(x => x.uid === uid)?.name || '' }));
   };
 
   const replaceAll = () => {
@@ -117,7 +118,7 @@ export default function FindBar() {
       });
       if (!n) return false;
     });
-    if (n) st.toast('Replaced in ' + n + ' task' + (n > 1 ? 's' : ''));
+    if (n) st.toast(n === 1 ? t('Replaced in {n} task', { n }) : t('Replaced in {n} tasks', { n }));
   };
 
   const onKey = (e: React.KeyboardEvent) => {
@@ -128,28 +129,28 @@ export default function FindBar() {
   return (
     <div className="findbar" role="search">
       <Icon name="search" />
-      <input ref={inputRef} className="cell" value={q} placeholder="Find tasks…" spellCheck={false}
-        aria-label="Find" onKeyDown={onKey} onChange={e => { setQ(e.target.value); setIdx(0); }} />
-      <select className="cell" value={scope} aria-label="Search scope"
+      <input ref={inputRef} className="cell" value={q} placeholder={t('Find tasks…')} spellCheck={false}
+        aria-label={t('Find')} onKeyDown={onKey} onChange={e => { setQ(e.target.value); setIdx(0); }} />
+      <select className="cell" value={scope} aria-label={t('Search scope')}
         onChange={e => { setScope(e.target.value as Scope); setIdx(0); }}>
-        <option value="name">Task name</option>
-        <option value="namenotes">Name + notes</option>
-        <option value="all">All text fields</option>
+        <option value="name">{t('Task name')}</option>
+        <option value="namenotes">{t('Name + notes')}</option>
+        <option value="all">{t('All text fields')}</option>
       </select>
-      <label className="find-opt" title="Treat the query as a regular expression">
-        <input type="checkbox" checked={useRe} onChange={e => { setUseRe(e.target.checked); setIdx(0); }} />Regex
+      <label className="find-opt" title={t('Treat the query as a regular expression')}>
+        <input type="checkbox" checked={useRe} onChange={e => { setUseRe(e.target.checked); setIdx(0); }} />{t('Regex')}
       </label>
       <span className="find-count">{matches.length ? (cur + 1) + ' / ' + matches.length : (q ? '0 / 0' : '')}</span>
-      <button className="btn" title="Previous match (Shift+Enter)" disabled={!matches.length} onClick={() => goto(cur - 1)}><Icon name="chevU" /></button>
-      <button className="btn" title="Next match (Enter)" disabled={!matches.length} onClick={() => goto(cur + 1)}><Icon name="chevD" /></button>
-      <button className="btn" onClick={() => setShowRepl(v => !v)}>{showRepl ? 'Hide replace' : 'Replace…'}</button>
+      <button className="btn" title={t('Previous match (Shift+Enter)')} disabled={!matches.length} onClick={() => goto(cur - 1)}><Icon name="chevU" /></button>
+      <button className="btn" title={t('Next match (Enter)')} disabled={!matches.length} onClick={() => goto(cur + 1)}><Icon name="chevD" /></button>
+      <button className="btn" onClick={() => setShowRepl(v => !v)}>{showRepl ? t('Hide replace') : t('Replace…')}</button>
       {showRepl && <>
-        <input className="cell" value={repl} placeholder="Replace with…" spellCheck={false}
-          aria-label="Replace with" onKeyDown={onKey} onChange={e => setRepl(e.target.value)} />
-        <button className="btn" disabled={!matches.length} onClick={replaceCurrent}>Replace</button>
-        <button className="btn" disabled={!matches.length} onClick={replaceAll}>Replace all</button>
+        <input className="cell" value={repl} placeholder={t('Replace with…')} spellCheck={false}
+          aria-label={t('Replace with')} onKeyDown={onKey} onChange={e => setRepl(e.target.value)} />
+        <button className="btn" disabled={!matches.length} onClick={replaceCurrent}>{t('Replace')}</button>
+        <button className="btn" disabled={!matches.length} onClick={replaceAll}>{t('Replace all')}</button>
       </>}
-      <button className="btn" title="Close (Esc)" onClick={close}><Icon name="x" /></button>
+      <button className="btn" title={t('Close (Esc)')} onClick={close}><Icon name="x" /></button>
     </div>
   );
 }

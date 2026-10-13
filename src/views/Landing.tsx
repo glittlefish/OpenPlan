@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import '@fontsource-variable/archivo';
 import OP from '../core';
 import { useApp, S, ask } from '../store';
+import { t } from '../i18n';
 import Icon from '../components/Icon';
 import type { Schedule } from '../types';
 
@@ -14,10 +15,10 @@ export const enterApp = () => { location.hash = 'app'; };
 const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 
 function openSample() {
-  ask('Open the sample project? Your current plan can be restored with Undo.', () => {
-    S().replaceProject(OP.demo(), 'Sample project loaded');
+  ask(t('Open the sample project? Your current plan can be restored with Undo.'), () => {
+    S().replaceProject(OP.demo(), t('Sample project loaded'));
     enterApp();
-  }, 'Open sample');
+  }, t('Open sample'));
 }
 
 const STEPS: [string, string][] = [
@@ -66,7 +67,7 @@ function useSample() {
     const sprint = s.rows.find(r => r.summary && r.task.name.startsWith('Sprint 1'));
     return {
       gantt: C.gantt({ p, s, rows: s.rows, zoom: 'week', critical: true, table: true }).svg,
-      network: C.network({ p, s, rows: sprint ? sprint.leaves.map(i => s.rows[i]) : s.rows, critical: true, dates: false, title: sprint ? 'Sprint 1' : 'Sample project' }).svg,
+      network: C.network({ p, s, rows: sprint ? sprint.leaves.map(i => s.rows[i]) : s.rows, critical: true, dates: false, title: sprint ? 'Sprint 1' : t('Sample project') }).svg,
       wbs: C.wbs({ p, s, depth: 2 }).svg,
       cost: C.costChart({ p, data: C.monthlyCost(p, s), kind: 'cumulative' })
     };
@@ -85,21 +86,21 @@ function Preview({ sample }: { sample: ReturnType<typeof useSample> }) {
   const cur = TABS.find(t => t[0] === tab)!;
   return (
     <div className="lp-preview">
-      <div className="lp-tabs" role="tablist" aria-label="Preview">
+      <div className="lp-tabs" role="tablist" aria-label={t('Preview')}>
         {TABS.map(([k, label, icon]) => (
           <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
-            <Icon name={icon} />{label}
+            <Icon name={icon} />{t(label)}
           </button>
         ))}
       </div>
       <div className="lp-shot">
         <div className="lp-shot-bar">
           <img className="logo" src="./assets/OpenPlan.png" alt="" width={16} height={16} />
-          <span>Library Booking App (Sample) — {cur[1]}</span>
+          <span>{t('Library Booking App (Sample) — {title}', { title: t(cur[1]) })}</span>
         </div>
         <div className={'lp-shot-body ' + tab} role="tabpanel" dangerouslySetInnerHTML={{ __html: sample[tab] }} />
       </div>
-      <p className="lp-caption">{cur[3]} Drawn live from the sample project.</p>
+      <p className="lp-caption">{t(cur[3])} {t('Drawn live from the sample project.')}</p>
     </div>
   );
 }
@@ -115,37 +116,35 @@ export default function Landing() {
           <img className="logo" src="./assets/OpenPlan.png" alt="" width={26} height={26} />OpenPlan
         </a>
         <nav className="lp-links">
-          <button onClick={() => scrollTo('how')}>How it works</button>
-          <button onClick={() => scrollTo('outputs')}>What you get</button>
-          <button onClick={() => scrollTo('included')}>Features</button>
+          <button onClick={() => scrollTo('how')}>{t('How it works')}</button>
+          <button onClick={() => scrollTo('outputs')}>{t('What you get')}</button>
+          <button onClick={() => scrollTo('included')}>{t('Features')}</button>
         </nav>
-        <button className="lp-theme" aria-label="Toggle dark mode" title="Dark / light" onClick={() => st.setUI({ theme: st.theme === 'dark' ? 'light' : 'dark' })}>
+        <button className="lp-theme" aria-label={t('Toggle dark mode')} title={t('Dark / light')} onClick={() => st.setUI({ theme: st.theme === 'dark' ? 'light' : 'dark' })}>
           <Icon name={st.theme === 'dark' ? 'sun' : 'moon'} />
         </button>
-        <button className="lp-btn" onClick={enterApp}>Open the app</button>
+        <button className="lp-btn" onClick={enterApp}>{t('Open the app')}</button>
       </header>
 
       <main>
         <section className="lp-hero">
           <div className="lp-hero-top">
             <div className="lp-hero-copy">
-              <p className="lp-label">Free online project planning</p>
-              <h1>Turn a task list into a complete project plan.</h1>
+              <p className="lp-label">{t('Free online project planning')}</p>
+              <h1>{t('Turn a task list into a complete project plan.')}</h1>
               <p className="lp-lede">
-                Enter your tasks, how long they take and what depends on what. OpenPlan builds the schedule and
-                gives you the Gantt chart, critical path, network diagram, WBS, resource plan and budget,
-                ready to export into your report.
+                {t('Enter your tasks, how long they take and what depends on what. OpenPlan builds the schedule and gives you the Gantt chart, critical path, network diagram, WBS, resource plan and budget, ready to export into your report.')}
               </p>
               <div className="lp-actions">
-                <button className="lp-btn lg" onClick={enterApp}>Start planning <Icon name="chevR" /></button>
-                <button className="lp-btn lg ghost" onClick={openSample}>Try the sample project</button>
+                <button className="lp-btn lg" onClick={enterApp}>{t('Start planning')} <Icon name="chevR" /></button>
+                <button className="lp-btn lg ghost" onClick={openSample}>{t('Try the sample project')}</button>
               </div>
-              <p className="lp-note">Free · No sign-up · Nothing to install · Your project data stays on your computer</p>
+              <p className="lp-note">{t('Free · No sign-up · Nothing to install · Your project data stays on your computer')}</p>
             </div>
             <div className="lp-summary">
-              <p className="lp-label" id="lp-glance">At a glance</p>
+              <p className="lp-label" id="lp-glance">{t('At a glance')}</p>
               <ul className="lp-stats" aria-labelledby="lp-glance">
-                {STATS.map(([n, label]) => <li key={label}><b>{n}</b><span>{label}</span></li>)}
+                {STATS.map(([n, label]) => <li key={label}><b>{n}</b><span>{t(label)}</span></li>)}
               </ul>
             </div>
           </div>
@@ -154,25 +153,25 @@ export default function Landing() {
 
         <section className="lp-block" id="how">
           <div className="lp-head">
-            <h2>How it works</h2>
-            <p>Four steps take you from a list of tasks to a finished plan. You don’t need any project management software experience.</p>
+            <h2>{t('How it works')}</h2>
+            <p>{t('Four steps take you from a list of tasks to a finished plan. You don’t need any project management software experience.')}</p>
           </div>
           <div className="lp-gantt">
             <div className="lp-g-row lp-g-head" aria-hidden="true">
-              <span className="lp-g-id">ID</span><span>Task</span><span className="lp-g-pred">Pred.</span><span className="lp-g-time">Timeline</span>
+              <span className="lp-g-id">{t('ID')}</span><span>{t('Task')}</span><span className="lp-g-pred">{t('Pred.')}</span><span className="lp-g-time">{t('Timeline')}</span>
             </div>
             <ol>
               {STEPS.map(([title, text], i) => (
                 <li className="lp-g-row" key={title}>
                   <span className="lp-g-id">{i + 1}</span>
-                  <div><h3>{title}</h3><p>{text}</p></div>
+                  <div><h3>{t(title)}</h3><p>{t(text)}</p></div>
                   <span className="lp-g-pred">{i ? i : '–'}</span>
                   <span className="lp-g-time" aria-hidden="true"><i className="lp-g-bar" style={{ '--i': i } as CSSProperties} /></span>
                 </li>
               ))}
               <li className="lp-g-row ms">
                 <span className="lp-g-id">{STEPS.length + 1}</span>
-                <div><h3>Plan ready</h3></div>
+                <div><h3>{t('Plan ready')}</h3></div>
                 <span className="lp-g-pred">{STEPS.length}</span>
                 <span className="lp-g-time" aria-hidden="true"><i className="lp-g-ms" /></span>
               </li>
@@ -182,64 +181,64 @@ export default function Landing() {
 
         <section className="lp-block" id="outputs">
           <div className="lp-head">
-            <h2>What you get</h2>
-            <p>Every chart is drawn from your plan and updates as you edit, so your diagrams always match your schedule.</p>
+            <h2>{t('What you get')}</h2>
+            <p>{t('Every chart is drawn from your plan and updates as you edit, so your diagrams always match your schedule.')}</p>
           </div>
           <ul className="lp-outputs">
-            {OUTPUTS.map(o => <li key={o}><Icon name="check" />{o}</li>)}
+            {OUTPUTS.map(o => <li key={o}><Icon name="check" />{t(o)}</li>)}
           </ul>
         </section>
 
         <section className="lp-block" id="audience">
           <div className="lp-head">
-            <h2>Who it’s for</h2>
-            <p>Anyone who needs a proper project plan without buying desktop project management software.</p>
+            <h2>{t('Who it’s for')}</h2>
+            <p>{t('Anyone who needs a proper project plan without buying desktop project management software.')}</p>
           </div>
           <div className="lp-cols">
-            {AUDIENCE.map(([icon, title, text]) => <div key={title}><Icon name={icon} /><h3>{title}</h3><p>{text}</p></div>)}
+            {AUDIENCE.map(([icon, title, text]) => <div key={title}><Icon name={icon} /><h3>{t(title)}</h3><p>{t(text)}</p></div>)}
           </div>
         </section>
 
         <section className="lp-block" id="included">
           <div className="lp-head">
-            <h2>Features</h2>
-            <p>The parts of desktop project software that courses and small teams actually use.</p>
+            <h2>{t('Features')}</h2>
+            <p>{t('The parts of desktop project software that courses and small teams actually use.')}</p>
           </div>
           <dl className="lp-spec">
-            {SPEC.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}
+            {SPEC.map(([k, v]) => <div key={k}><dt>{t(k)}</dt><dd>{t(v)}</dd></div>)}
           </dl>
         </section>
 
         <section className="lp-block" id="files">
           <div className="lp-head">
-            <h2>Your work stays with you</h2>
-            <p>OpenPlan has no server and no account. Here’s where your plans are kept. Anonymous visit counts (page, referrer, screen size, browser) are collected with cookie-free GoatCounter analytics; project data is never sent.</p>
+            <h2>{t('Your work stays with you')}</h2>
+            <p>{t('OpenPlan has no server and no account. Here’s where your plans are kept. Anonymous visit counts (page, referrer, screen size, browser) are collected with cookie-free GoatCounter analytics; project data is never sent.')}</p>
           </div>
           <div className="lp-cols">
-            <div><Icon name="save" /><h3>In your browser</h3><p>Every change is saved automatically on this device, so you can close the tab and continue later.</p></div>
-            <div><Icon name="file" /><h3>In .openplan files</h3><p>Save to a file on your computer. In Chrome and Edge, install the app and double-click a file to open it.</p></div>
-            <div><Icon name="download" /><h3>In other tools</h3><p>Export CSV for spreadsheets, and PNG or SVG for your report.</p></div>
+            <div><Icon name="save" /><h3>{t('In your browser')}</h3><p>{t('Every change is saved automatically on this device, so you can close the tab and continue later.')}</p></div>
+            <div><Icon name="file" /><h3>{t('In .openplan files')}</h3><p>{t('Save to a file on your computer. In Chrome and Edge, install the app and double-click a file to open it.')}</p></div>
+            <div><Icon name="download" /><h3>{t('In other tools')}</h3><p>{t('Export CSV for spreadsheets, and PNG or SVG for your report.')}</p></div>
           </div>
         </section>
 
         <section className="lp-block" id="faq">
           <div className="lp-head">
-            <h2>Questions</h2>
-            <p>Short answers to what people usually ask first.</p>
+            <h2>{t('Questions')}</h2>
+            <p>{t('Short answers to what people usually ask first.')}</p>
           </div>
           <div className="lp-faq">
-            {FAQ.map(([q, a]) => <details key={q}><summary>{q}<Icon name="chevD" /></summary><p>{a}</p></details>)}
+            {FAQ.map(([q, a]) => <details key={q}><summary>{t(q)}<Icon name="chevD" /></summary><p>{t(a)}</p></details>)}
           </div>
         </section>
 
         <section className="lp-end">
           <div>
-            <h2>Ready to plan your project?</h2>
-            <p>Open the app to continue your plan, or explore the sample project first.</p>
+            <h2>{t('Ready to plan your project?')}</h2>
+            <p>{t('Open the app to continue your plan, or explore the sample project first.')}</p>
           </div>
           <div className="lp-actions">
-            <button className="lp-btn lg" onClick={enterApp}>Start planning <Icon name="chevR" /></button>
-            <button className="lp-btn lg ghost" onClick={openSample}>Try the sample project</button>
+            <button className="lp-btn lg" onClick={enterApp}>{t('Start planning')} <Icon name="chevR" /></button>
+            <button className="lp-btn lg ghost" onClick={openSample}>{t('Try the sample project')}</button>
           </div>
         </section>
       </main>
@@ -247,13 +246,13 @@ export default function Landing() {
       <footer className="lp-footer">
         <span>OpenPlan</span>
         <span className="lp-dot">·</span>
-        <span>Free, browser-based project planning</span>
+        <span>{t('Free, browser-based project planning')}</span>
         <span className="lp-dot">·</span>
-        <span>Open source under the <a href={REPO + '/blob/main/LICENSE'} target="_blank" rel="noreferrer">MIT License</a></span>
+        <span>{t('Open source under the')} <a href={REPO + '/blob/main/LICENSE'} target="_blank" rel="noreferrer">{t('MIT License')}</a></span>
         <span className="lp-dot">·</span>
-        <a href={REPO} target="_blank" rel="noreferrer">Source on GitHub</a>
+        <a href={REPO} target="_blank" rel="noreferrer">{t('Source on GitHub')}</a>
         <span className="lp-dot">·</span>
-        <span>Made by <a href="https://github.com/MNSBaanu" target="_blank" rel="noreferrer">MNS Baanu</a></span>
+        <span>{t('Made by')} <a href="https://github.com/MNSBaanu" target="_blank" rel="noreferrer">MNS Baanu</a></span>
       </footer>
     </div>
   );

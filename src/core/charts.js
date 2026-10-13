@@ -1,4 +1,5 @@
 import OP from './core.js';
+import { t } from '../i18n';
 /* SVG renderers: Gantt chart, network (AON) diagram, WBS chart, organisation chart, cost charts. */
 OP.charts = (function () {
   var U = OP.util, esc = U.esc;
@@ -222,7 +223,7 @@ OP.charts = (function () {
             g += '<text x="' + (q.x + 8) + '" y="' + (q.y + 18 + k * 14) + '">' + esc(ln) + '</text>';
           });
         } else {
-          g += '<text class="m sm" x="' + (q.x + 8) + '" y="' + (q.y + 18) + '">Double-click to edit</text>';
+          g += '<text class="m sm" x="' + (q.x + 8) + '" y="' + (q.y + 18) + '">' + t('Double-click to edit') + '</text>';
         }
         g += '<rect class="anno-handle" x="' + (q.x + q.w - 9) + '" y="' + (q.y + q.h - 9) + '" width="9" height="9"/>';
       }
@@ -251,7 +252,7 @@ OP.charts = (function () {
     var start = lo - 2, end = hi + 21;
     if (o.zoom === 'week') start -= U.weekday(start) === 0 ? 6 : U.weekday(start) - 1;
     if (o.zoom === 'month' || o.zoom === 'quarter') { var d0 = U.toDate(start); start -= d0.getUTCDate() - 1; end += o.zoom === 'quarter' ? 100 : 20; }
-    var cols = o.table ? [['ID', 34], ['Task Name', 280], ['Duration', 66], ['Start', 78], ['Finish', 78]] : [];
+    var cols = o.table ? [[t('ID'), 34], [t('Task Name'), 280], [t('Duration'), 66], [t('Start'), 78], [t('Finish'), 78]] : [];
     var tw = cols.reduce(function (a, c) { return a + c[1]; }, 0);
     var W = tw + (end - start) * ppd, H = HDR + Math.max(rows.length, 1) * ROW + 1;
     function X(dn) { return tw + (dn - start) * ppd; }
@@ -270,14 +271,14 @@ OP.charts = (function () {
     for (dn = start; dn <= end; dn++) {
       var d = U.toDate(dn), wd = U.weekday(dn), day = d.getUTCDate(), mon = d.getUTCMonth(), yr = d.getUTCFullYear();
       if (o.zoom === 'day') {
-        if (wd === 1 || dn === start) top.push([dn, 'Week of ' + U.fmt(dn)]);
-        bot.push([dn, 'SMTWTFS'[wd] + ' ' + day]);
+        if (wd === 1 || dn === start) top.push([dn, t('Week of {date}', { date: U.fmt(dn) })]);
+        bot.push([dn, U.wdInitial(wd) + ' ' + day]);
       } else if (o.zoom === 'week') {
-        if (day === 1 || dn === start) top.push([dn, U.MONTHS[mon] + ' ' + yr]);
-        if (wd === 1) bot.push([dn, day + ' ' + U.MONTHS[mon]]);
+        if (day === 1 || dn === start) top.push([dn, U.monYear(mon, yr)]);
+        if (wd === 1) bot.push([dn, U.dayMon(day, mon)]);
       } else if (o.zoom === 'month') {
         if ((day === 1 && mon === 0) || dn === start) top.push([dn, String(yr)]);
-        if (day === 1) bot.push([dn, U.MONTHS[mon]]);
+        if (day === 1) bot.push([dn, U.monName(mon)]);
       } else {
         if ((day === 1 && mon === 0) || dn === start) top.push([dn, String(yr)]);
         if (day === 1 && mon % 3 === 0) bot.push([dn, 'Q' + (mon / 3 + 1)]);
@@ -336,10 +337,10 @@ OP.charts = (function () {
       var x1 = X(r.startDn), x2 = X(r.finishDn) + ppd;
       var showBase = o.baseline && r.base;
       var by = showBase ? y + 3 : y + 6, bh = showBase ? 11 : 12;
-      var tip = '<title>' + esc(r.id + '. ' + r.task.name + ' — ' + U.fmt(r.startDn) + ' to ' + U.fmt(r.finishDn) + ', ' + OP.model.fmtDuration(r.duration) +
-        (r.slack > 0 ? ', slack ' + U.num(r.slack) + 'd' : '') + (r.percent ? ', ' + r.percent + '% complete' : '') +
-        (r.base ? '\nBaseline: ' + U.fmt(r.base.startDn) + ' to ' + U.fmt(r.base.finishDn) : '') +
-        (r.task.deadline ? '\nDeadline: ' + U.fmt(U.parseDate(r.task.deadline)) : '')) + '</title>';
+      var tip = '<title>' + esc(r.id + '. ' + r.task.name + ' — ' + t('{start} to {finish}', { start: U.fmt(r.startDn), finish: U.fmt(r.finishDn) }) + ', ' + OP.model.fmtDuration(r.duration) +
+        (r.slack > 0 ? t(', slack {n}d', { n: U.num(r.slack) }) : '') + (r.percent ? t(', {n}% complete', { n: r.percent }) : '') +
+        (r.base ? t('\nBaseline: {start} to {finish}', { start: U.fmt(r.base.startDn), finish: U.fmt(r.base.finishDn) }) : '') +
+        (r.task.deadline ? t('\nDeadline: {date}', { date: U.fmt(U.parseDate(r.task.deadline)) }) : '')) + '</title>';
       h.push('<g class="gbar" data-uid="' + esc(r.task.uid) + '" tabindex="0" role="button" aria-label="' + esc(r.id + '. ' + r.task.name) + '">' + tip);
       if (showBase) {
         var bx1 = X(r.base.startDn), bx2 = X(r.base.finishDn) + ppd;
@@ -405,7 +406,7 @@ OP.charts = (function () {
     if (today >= start && today <= end) h.push('<line class="today" x1="' + X(today) + '" y1="' + HDR + '" x2="' + X(today) + '" y2="' + H + '"/>');
     if (o.p.statusDate && s.statusDn >= start && s.statusDn <= end) {
       var sxl = X(s.statusDn) + ppd;
-      h.push('<line class="gstat" x1="' + sxl + '" y1="' + HDR + '" x2="' + sxl + '" y2="' + H + '"/><text class="sm gstat-t" x="' + (sxl + 4) + '" y="' + (HDR + 11) + '">Status date</text>');
+      h.push('<line class="gstat" x1="' + sxl + '" y1="' + HDR + '" x2="' + sxl + '" y2="' + H + '"/><text class="sm gstat-t" x="' + (sxl + 4) + '" y="' + (HDR + 11) + '">' + t('Status date') + '</text>');
     }
     h.push('</svg>');
     return { svg: h.join(''), X: X, ppd: ppd, start: start, tableWidth: tw, pos: pos };
@@ -483,11 +484,11 @@ OP.charts = (function () {
 
     // Legend
     var lx = PAD, ly = PAD;
-    h.push('<text class="b lg" x="' + lx + '" y="' + (ly + 4) + '">' + esc(o.title || 'Activity network (AON)') + '</text>');
-    h.push(nodeBox(lx, ly + 16, { es: 'ES', dur: 'Duration', ef: 'EF', id: 'ID', name: 'Task name', res: 'Resources', ls: 'LS', slack: 'Total slack', lf: 'LF', crit: false, legend: true }));
-    h.push('<text class="m sm" x="' + (lx + NW + 16) + '" y="' + (ly + 40) + '">Values are in working days from project start (day 0).</text>');
-    h.push('<text class="m sm" x="' + (lx + NW + 16) + '" y="' + (ly + 58) + '">Red border and arrows = critical path (zero total slack).</text>');
-    h.push('<text class="m sm" x="' + (lx + NW + 16) + '" y="' + (ly + 76) + '">Slack = LS − ES. Project duration: ' + U.num(s.duration) + ' working days.</text>');
+    h.push('<text class="b lg" x="' + lx + '" y="' + (ly + 4) + '">' + esc(o.title || t('Activity network (AON)')) + '</text>');
+    h.push(nodeBox(lx, ly + 16, { es: t('ES'), dur: t('Duration'), ef: t('EF'), id: t('ID'), name: t('Task name'), res: t('Resources'), ls: t('LS'), slack: t('Total slack'), lf: t('LF'), crit: false, legend: true }));
+    h.push('<text class="m sm" x="' + (lx + NW + 16) + '" y="' + (ly + 40) + '">' + t('Values are in working days from project start (day 0).') + '</text>');
+    h.push('<text class="m sm" x="' + (lx + NW + 16) + '" y="' + (ly + 58) + '">' + t('Red border and arrows = critical path (zero total slack).') + '</text>');
+    h.push('<text class="m sm" x="' + (lx + NW + 16) + '" y="' + (ly + 76) + '">' + t('Slack = LS − ES. Project duration: {n} working days.', { n: U.num(s.duration) }) + '</text>');
 
     function edgePath(a, b, crit) {
       var x1 = a.x2, y1 = a.y, x2 = b.x1, y2 = b.y, mx = (x1 + x2) / 2;
@@ -508,10 +509,10 @@ OP.charts = (function () {
       if (!hasIn[r.i]) h.push(edgePath(sPort, port(r.i), crit && r.es === 0));
       if (!hasOut[r.i]) h.push(edgePath(port(r.i), ePort, crit && Math.abs(r.ef - s.duration) < 1e-9));
     });
-    [[startN, 'Start', '0'], [endN, 'Finish', U.num(s.duration)]].forEach(function (n) {
+    [[startN, t('Start'), '0'], [endN, t('Finish'), U.num(s.duration)]].forEach(function (n) {
       h.push('<rect class="node c" x="' + n[0].x + '" y="' + (n[0].y - 24) + '" width="' + SW + '" height="48"/>');
       h.push('<text class="b" text-anchor="middle" x="' + (n[0].x + SW / 2) + '" y="' + (n[0].y - 2) + '">' + n[1] + '</text>');
-      h.push('<text class="m sm" text-anchor="middle" x="' + (n[0].x + SW / 2) + '" y="' + (n[0].y + 13) + '">day ' + n[2] + '</text>');
+      h.push('<text class="m sm" text-anchor="middle" x="' + (n[0].x + SW / 2) + '" y="' + (n[0].y + 13) + '">' + t('day {n}', { n: n[2] }) + '</text>');
     });
 
     function v(n) { return o.dates ? n : U.num(n); }
@@ -574,13 +575,13 @@ OP.charts = (function () {
     // Extra info lines below the (always shown) name; notes only when present.
     function extrasOf(r) {
       var out = [];
-      if (show.start) out.push('Start  ' + U.fmt(r.startDn));
-      if (show.finish) out.push('Finish  ' + U.fmt(r.finishDn));
-      if (show.duration) out.push('Duration  ' + OP.model.fmtDuration(r.duration));
-      if (show.percent) out.push('Complete  ' + Math.round(r.percent) + '%');
-      if (show.resources && r.names) out.push('Resources  ' + trunc(r.names, 42));
-      if (show.preds) { var pt = OP.model.formatPreds(p, r.task, idx); if (pt) out.push('Predecessors  ' + pt); }
-      if (show.notes && r.task.notes) out.push('Notes  ' + trunc(String(r.task.notes), 60));
+      if (show.start) out.push(t('Start  ') + U.fmt(r.startDn));
+      if (show.finish) out.push(t('Finish  ') + U.fmt(r.finishDn));
+      if (show.duration) out.push(t('Duration  ') + OP.model.fmtDuration(r.duration));
+      if (show.percent) out.push(t('Complete  ') + Math.round(r.percent) + '%');
+      if (show.resources && r.names) out.push(t('Resources  ') + trunc(r.names, 42));
+      if (show.preds) { var pt = OP.model.formatPreds(p, r.task, idx); if (pt) out.push(t('Predecessors  ') + pt); }
+      if (show.notes && r.task.notes) out.push(t('Notes  ') + trunc(String(r.task.notes), 60));
       return out;
     }
     function boxH(r, w) {
@@ -713,12 +714,12 @@ OP.charts = (function () {
       h.push('<rect class="t-' + esc(r.type) + '" x="' + a.x + '" y="' + (a.y + 10) + '" width="4" height="' + (NH - 20) + '"/>');
       h.push('<text class="b" x="' + (a.x + 14) + '" y="' + (a.y + 22) + '">' + esc(trunc(r.name, 26)) + '</text>');
       h.push('<text class="m sm" x="' + (a.x + 14) + '" y="' + (a.y + 38) + '">' + esc(trunc(r.role, 30)) + '</text>');
-      h.push('<text class="m sm" x="' + (a.x + 14) + '" y="' + (a.y + 54) + '">' + esc(r.type + ' · ' + r.maxUnits + '% · ' + U.money(r.rate, o.p.currency) + '/h') + '</text></g>');
+      h.push('<text class="m sm" x="' + (a.x + 14) + '" y="' + (a.y + 54) + '">' + esc(t(r.type) + ' · ' + r.maxUnits + '% · ' + U.money(r.rate, o.p.currency) + '/h') + '</text></g>');
     });
     // Legend: type is shown by the side stripe and repeated in text on every card.
     var lx = PAD, ly = H - 24;
-    OP.model.RES_TYPES.forEach(function (t) {
-      h.push('<rect class="t-' + t + '" x="' + lx + '" y="' + (ly - 9) + '" width="10" height="10"/><text class="m sm" x="' + (lx + 15) + '" y="' + ly + '">' + t + '</text>');
+    OP.model.RES_TYPES.forEach(function (rt) {
+      h.push('<rect class="t-' + rt + '" x="' + lx + '" y="' + (ly - 9) + '" width="10" height="10"/><text class="m sm" x="' + (lx + 15) + '" y="' + ly + '">' + esc(t(rt)) + '</text>');
       lx += 100;
     });
     h.push('</svg>');
@@ -746,7 +747,7 @@ OP.charts = (function () {
     var out = [], cum = 0;
     for (var k = keys[0]; k <= keys[keys.length - 1]; k++) {
       cum += byMonth[k] || 0;
-      out.push({ label: U.MONTHS[k % 12] + ' ' + String(Math.floor(k / 12)).slice(2), value: byMonth[k] || 0, cum: cum });
+      out.push({ label: U.monYearShort(k % 12, Math.floor(k / 12)), value: byMonth[k] || 0, cum: cum });
     }
     return out;
   }
@@ -792,12 +793,12 @@ OP.charts = (function () {
       data.forEach(function (d, i) {
         var cx = L + step * i + step / 2;
         h.push('<circle class="cbar" cx="' + cx + '" cy="' + Y(d.cum) + '" r="4" stroke="var(--surface)" stroke-width="2"/>');
-        h.push('<rect class="hit" x="' + (L + step * i) + '" y="' + T + '" width="' + step + '" height="' + ph + '"><title>' + esc(d.label + ': ' + U.money(d.cum, cur) + ' cumulative') + '</title></rect>');
+        h.push('<rect class="hit" x="' + (L + step * i) + '" y="' + T + '" width="' + step + '" height="' + ph + '"><title>' + esc(d.label + ': ' + U.money(d.cum, cur) + t(' cumulative')) + '</title></rect>');
       });
       if (+o.p.budget > 0) {
         var by = Y(+o.p.budget);
         h.push('<line class="bud" x1="' + L + '" y1="' + by + '" x2="' + (W - R) + '" y2="' + by + '"/>');
-        h.push('<text class="m sm" text-anchor="end" x="' + (W - R) + '" y="' + (by - 6) + '">Budget ' + short(+o.p.budget) + '</text>');
+        h.push('<text class="m sm" text-anchor="end" x="' + (W - R) + '" y="' + (by - 6) + '">' + t('Budget {n}', { n: short(+o.p.budget) }) + '</text>');
       }
     }
     h.push('<line class="gls" x1="' + L + '" y1="' + (T + ph) + '" x2="' + (W - R) + '" y2="' + (T + ph) + '"/></svg>');

@@ -3,6 +3,8 @@
  * Scheduling uses the critical path method: a forward pass for early dates,
  * a backward pass for late dates, then total/free slack and the critical path.
  */
+import { t as tr } from '../i18n';
+
 const OP = {};
 
 /* ---------- utilities ---------- */
@@ -12,6 +14,10 @@ OP.util = (function () {
   var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   var fullYear = false;
   function setFullYear(on) { fullYear = !!on; }
+  // Locale for date/money formatting (PRD M17-7); kept in sync with the UI language by the store.
+  var lang = 'zh-CN';
+  function setLang(l) { if (l === 'zh-CN' || l === 'en-US') lang = l; }
+  function getLang() { return lang; }
 
   // Dates are handled as whole day numbers (days since 1970-01-01, UTC) to avoid timezone drift.
   function parseDate(s) {
@@ -27,11 +33,13 @@ OP.util = (function () {
     if (dn == null) return '';
     var d = toDate(dn);
     var y = String(d.getUTCFullYear());
+    if (lang === 'zh-CN') return d.getUTCFullYear() + '年' + (d.getUTCMonth() + 1) + '月' + d.getUTCDate() + '日';
     return d.getUTCDate() + ' ' + MONTHS[d.getUTCMonth()] + ' ' + (fullYear ? y : y.slice(2));
   }
   function fmtLong(dn) {
     if (dn == null) return '';
     var d = toDate(dn);
+    if (lang === 'zh-CN') return d.getUTCFullYear() + '年' + (d.getUTCMonth() + 1) + '月' + d.getUTCDate() + '日';
     return DAYS[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + MONTHS[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
   }
   function todayDn() {
@@ -39,10 +47,10 @@ OP.util = (function () {
     return Math.round(Date.UTC(n.getFullYear(), n.getMonth(), n.getDate()) / 864e5);
   }
   function money(v, cur) {
-    return (cur ? cur + ' ' : '') + Math.round(v || 0).toLocaleString();
+    return (cur ? cur + ' ' : '') + Math.round(v || 0).toLocaleString(lang === 'zh-CN' ? 'zh-CN' : 'en-US');
   }
   function num(v, dp) {
-    return (+v || 0).toLocaleString(undefined, { maximumFractionDigits: dp == null ? 1 : dp });
+    return (+v || 0).toLocaleString(lang === 'zh-CN' ? 'zh-CN' : 'en-US', { maximumFractionDigits: dp == null ? 1 : dp });
   }
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -50,6 +58,12 @@ OP.util = (function () {
     });
   }
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  // Locale-aware short labels for chart axes (PRD M17-7).
+  function monName(mon) { return lang === 'zh-CN' ? (mon + 1) + '月' : MONTHS[mon]; }
+  function monYear(mon, yr) { return lang === 'zh-CN' ? yr + '年' + (mon + 1) + '月' : MONTHS[mon] + ' ' + yr; }
+  function monYearShort(mon, yr) { return lang === 'zh-CN' ? String(yr).slice(2) + '年' + (mon + 1) + '月' : MONTHS[mon] + ' ' + String(yr).slice(2); }
+  function dayMon(day, mon) { return lang === 'zh-CN' ? (mon + 1) + '月' + day + '日' : day + ' ' + MONTHS[mon]; }
+  function wdInitial(wd) { return lang === 'zh-CN' ? '日一二三四五六'[wd] : 'SMTWTFS'[wd]; }
   function download(name, content, type) {
     var blob = content instanceof Blob ? content : new Blob([content], { type: type || 'text/plain' });
     var a = document.createElement('a');
@@ -63,7 +77,8 @@ OP.util = (function () {
 
   return {
     MONTHS: MONTHS, DAYS: DAYS, parseDate: parseDate, toDate: toDate, iso: iso, weekday: weekday,
-    fmt: fmt, fmtLong: fmtLong, setFullYear: setFullYear, todayDn: todayDn, money: money, num: num, esc: esc, clone: clone,
+    fmt: fmt, fmtLong: fmtLong, setFullYear: setFullYear, setLang: setLang, getLang: getLang, todayDn: todayDn, money: money, num: num, esc: esc, clone: clone,
+    monName: monName, monYear: monYear, monYearShort: monYearShort, dayMon: dayMon, wdInitial: wdInitial,
     download: download, slug: slug
   };
 })();
@@ -584,7 +599,7 @@ OP.schedule = function (p, opts) {
       if (t.constraint === 'MSO' && (cd = startIdx(t.constraintDate)) != null) es = cd;
       if (t.constraint === 'MFO' && (cd = finishIdx(t.constraintDate)) != null) es = cd - sp;
     }
-    if (es < fromLinks - 1e-9) conflict[i] = 'The ' + M.CONSTRAINTS[t.constraint] + ' date is earlier than its predecessors allow';
+    if (es < fromLinks - 1e-9) conflict[i] = tr('The {c} date is earlier than its predecessors allow', { c: tr(M.CONSTRAINTS[t.constraint]) });
     es = Math.max(0, es) + (t.constraint === 'ALAP' ? 0 : +t.levelDelay || 0);
     if (t.actualStart && (cd = startIdx(t.actualStart)) != null) es = cd;
     ES[i] = es;

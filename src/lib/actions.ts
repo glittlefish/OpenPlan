@@ -1,4 +1,5 @@
 import OP from '../core';
+import { t } from '../i18n';
 import { S, ask, PREV_STORE, type Store } from '../store';
 import { gridItems } from './grid';
 import { toXlsx } from './xlsx';
@@ -10,41 +11,41 @@ const U = OP.util, C = OP.charts, IO = OP.io;
 
 const W = window as any;
 const FS = !!W.showSaveFilePicker;
-const TYPES = [{ description: 'OpenPlan project', accept: { 'application/x-openplan': ['.openplan'] } }];
+const TYPES = [{ description: t('OpenPlan project'), accept: { 'application/x-openplan': ['.openplan'] } }];
 let handle: any = null;
 
 const MAX_FILE_MB = 20;
 function checkSize(file: File) {
-  if (file.size > MAX_FILE_MB * 1024 * 1024) throw new Error('The file is larger than ' + MAX_FILE_MB + ' MB, so it is not an OpenPlan project.');
+  if (file.size > MAX_FILE_MB * 1024 * 1024) throw new Error(t('The file is larger than {n} MB, so it is not an OpenPlan project.', { n: MAX_FILE_MB }));
 }
 
 async function saveFile(as: boolean) {
   const st = S();
-  if (!FS) { U.download(U.slug(st.p.name) + '.openplan', IO.toJSON(st.p), 'application/x-openplan'); st.toast('Project file downloaded'); return; }
+  if (!FS) { U.download(U.slug(st.p.name) + '.openplan', IO.toJSON(st.p), 'application/x-openplan'); st.toast(t('Project file downloaded')); return; }
   try {
     if (as || !handle) handle = await W.showSaveFilePicker({ suggestedName: U.slug(st.p.name) + '.openplan', types: TYPES });
     const w = await handle.createWritable();
     await w.write(IO.toJSON(st.p));
     await w.close();
-    st.toast('Saved to ' + handle.name);
+    st.toast(t('Saved to {name}', { name: handle.name }));
   } catch (e: any) {
-    if (e.name !== 'AbortError') st.toast('Could not save: ' + e.message, true);
+    if (e.name !== 'AbortError') st.toast(t('Could not save: {msg}', { msg: e.message }), true);
   }
 }
 
 async function openHandle(h: any) {
   const file = await h.getFile();
   checkSize(file);
-  S().replaceProject(IO.fromJSON(await file.text()), 'Opened ' + file.name);
+  S().replaceProject(IO.fromJSON(await file.text()), t('Opened {name}', { name: file.name }));
   handle = h;
 }
 
 async function openFile() {
   try {
-    const [h] = await W.showOpenFilePicker({ types: [{ description: 'Project files', accept: { 'application/x-openplan': ['.openplan'], 'application/json': ['.json'] } }] });
+    const [h] = await W.showOpenFilePicker({ types: [{ description: t('Project files'), accept: { 'application/x-openplan': ['.openplan'], 'application/json': ['.json'] } }] });
     await openHandle(h);
   } catch (e: any) {
-    if (e.name !== 'AbortError') S().toast('Could not open file: ' + e.message, true);
+    if (e.name !== 'AbortError') S().toast(t('Could not open file: {msg}', { msg: e.message }), true);
   }
 }
 
@@ -52,7 +53,7 @@ export function handleLaunchFiles() {
   W.launchQueue?.setConsumer((params: any) => {
     if (!params.files?.length) return;
     location.hash = 'app';
-    openHandle(params.files[0]).catch((e: any) => S().toast('Could not open file: ' + e.message, true));
+    openHandle(params.files[0]).catch((e: any) => S().toast(t('Could not open file: {msg}', { msg: e.message }), true));
   });
 }
 
@@ -70,7 +71,7 @@ export function viewSvgString(st: Store, opts?: { selected?: boolean }): string 
   if (!st.s.rows.length && st.view !== 'org') return null;
   if (st.view === 'network') {
     const sr = st.netScope === 'all' ? null : st.s.rows.find((x: any) => String(x.task.uid) === String(st.netScope));
-    const title = sr ? sr.wbs + ' ' + sr.task.name : st.p.name + ' — activity network';
+    const title = sr ? sr.wbs + ' ' + sr.task.name : st.p.name + ' — ' + t('activity network');
     return C.network({ p: st.p, s: st.s, rows: scopeRows(st), critical: st.critical, dates: st.netDates, title }).svg;
   }
   if (st.view === 'wbs') return C.wbs({ p: st.p, s: st.s, depth: st.wbsDepth, box: st.wbsBox, selected: opts?.selected ? Object.fromEntries(st.sel.map((u: number) => [u, true])) : null }).svg;
@@ -94,9 +95,9 @@ export function loadProject(p: Project, msg: string) {
   S().replaceProject(p, msg);
 }
 
-export function openTemplate(t: Template) {
-  ask('Start a new plan from the “' + t.name + '” template? The current one can be restored from File › Open › Restore Previous Project.',
-    () => loadProject(fromTemplate(t), t.name + ' template loaded'), 'Use template');
+export function openTemplate(tpl: Template) {
+  ask(t('Start a new plan from the “{name}” template? The current one can be restored from File › Open › Restore Previous Project.', { name: tpl.name }),
+    () => loadProject(fromTemplate(tpl), t('{name} template loaded', { name: tpl.name })), t('Use template'));
 }
 
 export function runAction(a: string) {
@@ -104,16 +105,16 @@ export function runAction(a: string) {
   st.setUI({ menu: null, backstage: false });
   switch (a) {
     case 'new':
-      ask('Start a new blank project? The current one can be restored with Undo.', () => { handle = null; S().replaceProject(OP.model.blank(), 'New project created'); }, 'New project');
+      ask(t('Start a new blank project? The current one can be restored with Undo.'), () => { handle = null; S().replaceProject(OP.model.blank(), t('New project created')); }, t('New project'));
       break;
     case 'sample':
-      ask('Open the sample project? The current one can be restored from File › Open › Restore Previous Project.', () => { handle = null; S().replaceProject(OP.demo(), 'Sample project loaded'); }, 'Open sample');
+      ask(t('Open the sample project? The current one can be restored from File › Open › Restore Previous Project.'), () => { handle = null; S().replaceProject(OP.demo(), t('Sample project loaded')); }, t('Open sample'));
       break;
     case 'restore': {
       let text: string | null = null;
       try { text = localStorage.getItem(PREV_STORE); } catch { /* storage unavailable */ }
-      if (!text) { st.toast('There is no previous project to restore.'); break; }
-      try { handle = null; st.replaceProject(IO.fromJSON(text), 'Previous project restored'); } catch (e: any) { st.toast('Could not restore: ' + e.message, true); }
+      if (!text) { st.toast(t('There is no previous project to restore.')); break; }
+      try { handle = null; st.replaceProject(IO.fromJSON(text), t('Previous project restored')); } catch (e: any) { st.toast(t('Could not restore: {msg}', { msg: e.message }), true); }
       break;
     }
     case 'open': if (FS) openFile(); else pickFile(false); break;
@@ -123,18 +124,18 @@ export function runAction(a: string) {
     case 'save': saveFile(false); break;
     case 'saveas': saveFile(true); break;
     case 'xlsx':
-      U.download(name + '-tasks.xlsx', new Blob([toXlsx(IO.taskTable(st.p), 'Tasks')], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
-      st.toast('Excel file downloaded');
+      U.download(name + '-tasks.xlsx', new Blob([toXlsx(IO.taskTable(st.p), t('Tasks'))], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+      st.toast(t('Excel file downloaded'));
       break;
-    case 'csv': U.download(name + '-tasks.csv', '﻿' + IO.toCSV(st.p), 'text/csv'); st.toast('CSV downloaded'); break;
+    case 'csv': U.download(name + '-tasks.csv', '﻿' + IO.toCSV(st.p), 'text/csv'); st.toast(t('CSV downloaded')); break;
     case 'mspxml':
       U.download(name + '.xml', toMsProjectXml(st.p), 'application/xml');
-      st.toast('MS Project XML downloaded');
+      st.toast(t('MS Project XML downloaded'));
       break;
     case 'import-msp': importMsProject(); break;
     case 'png': case 'svg': {
       const svg = viewSvgString(st);
-      if (!svg) { st.toast('Switch to Gantt, Network, WBS or Team Chart to export an image.'); return; }
+      if (!svg) { st.toast(t('Switch to Gantt, Network, WBS or Team Chart to export an image.')); return; }
       if (a === 'png') IO.exportPNG(svgElement(svg), name + '-' + st.view);
       else IO.exportSVG(svgElement(svg), name + '-' + st.view);
       break;
@@ -147,7 +148,7 @@ export function runAction(a: string) {
     }
     case 'copyimg': {
       const svg = viewSvgString(st);
-      if (!svg) { st.toast('Switch to Gantt, Network, WBS or Team Chart to copy a picture.'); return; }
+      if (!svg) { st.toast(t('Switch to Gantt, Network, WBS or Team Chart to copy a picture.')); return; }
       IO.copyPNG(svgElement(svg), name + '-' + st.view, (m: string, err?: boolean) => st.toast(m, err));
       break;
     }
@@ -164,7 +165,7 @@ function pickFile(insert: boolean) {
   input.onchange = () => {
     const file = input.files && input.files[0];
     if (!file) return;
-    try { checkSize(file); } catch (e: any) { S().toast('Could not open file: ' + e.message, true); return; }
+    try { checkSize(file); } catch (e: any) { S().toast(t('Could not open file: {msg}', { msg: e.message }), true); return; }
     const reader = new FileReader();
     reader.onload = () => {
       const st = S();
@@ -174,10 +175,12 @@ function pickFile(insert: boolean) {
           let res = { uid: 0, warnings: [] as string[] };
           st.commit(pp => { res = IO.insertProject(pp, p); });
           st.select([res.uid], res.uid);
-          st.toast('Inserted ' + file.name + ' as a subproject' + (res.warnings.length ? '. Note: ' + res.warnings.join('; ') + '.' : ''), res.warnings.length > 0);
-        } else st.replaceProject(p, 'Opened ' + file.name);
+          st.toast(res.warnings.length
+            ? t('Inserted {name} as a subproject. Note: {warnings}.', { name: file.name, warnings: res.warnings.join('; ') })
+            : t('Inserted {name} as a subproject', { name: file.name }), res.warnings.length > 0);
+        } else st.replaceProject(p, t('Opened {name}', { name: file.name }));
       } catch (e: any) {
-        st.toast('Could not open file: ' + e.message, true);
+        st.toast(t('Could not open file: {msg}', { msg: e.message }), true);
       }
     };
     reader.readAsText(file);
@@ -200,10 +203,10 @@ function importMsProject() {
       try {
         const res = fromMsProjectXml(String(reader.result));
         handle = null;
-        loadProject(res.project, 'Imported ' + res.counts.tasks + ' task(s), ' + res.counts.links + ' link(s), ' + res.counts.resources + ' resource(s) from ' + file.name);
-        if (res.warnings.length) st.toast('Imported with notes: ' + res.warnings.slice(0, 3).join('; ') + (res.warnings.length > 3 ? '…' : ''), true);
+        loadProject(res.project, t('Imported {tasks} task(s), {links} link(s), {resources} resource(s) from {name}', { tasks: res.counts.tasks, links: res.counts.links, resources: res.counts.resources, name: file.name }));
+        if (res.warnings.length) st.toast(t('Imported with notes: {warnings}', { warnings: res.warnings.slice(0, 3).join('; ') + (res.warnings.length > 3 ? '…' : '') }), true);
       } catch (e: any) {
-        st.toast('Could not import MS Project file: ' + e.message, true);
+        st.toast(t('Could not import MS Project file: {msg}', { msg: e.message }), true);
       }
     };
     reader.readAsText(file);

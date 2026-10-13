@@ -1,6 +1,7 @@
 import { useState, type DragEvent } from 'react';
 import OP from '../core';
 import { useApp } from '../store';
+import { t } from '../i18n';
 import * as ops from '../lib/taskOps';
 import Icon from '../components/Icon';
 import type { Row } from '../types';
@@ -29,16 +30,16 @@ export default function BoardView() {
   };
   const open = (r: Row) => { st.select([r.task.uid], r.task.uid); st.setUI({ drawer: true }); };
 
-  if (!tasks.length) return <div className="view"><div className="empty"><h3>No tasks yet</h3><div>Add tasks in the Gantt view, then track them here.</div></div></div>;
+  if (!tasks.length) return <div className="view"><div className="empty"><h3>{t('No tasks yet')}</h3><div>{t('Add tasks in the Gantt view, then track them here.')}</div></div></div>;
   return (
     <div className="view">
       <div className="board">
         {COLUMNS.map((c, ci) => {
           const cards = tasks.filter(c.has);
           return (
-            <section key={c.key} className={'board-col' + (over === c.key ? ' over' : '')} aria-label={c.label}
+            <section key={c.key} className={'board-col' + (over === c.key ? ' over' : '')} aria-label={t(c.label)}
               onDragOver={e => { e.preventDefault(); setOver(c.key); }} onDragLeave={() => setOver(null)} onDrop={e => drop(e, ci)}>
-              <h2>{c.label} <span className="muted">{cards.length}</span></h2>
+              <h2>{t(c.label)} <span className="muted">{cards.length}</span></h2>
               <div className="board-cards">
                 {cards.map((r: Row) => (
                   <article key={r.task.uid} className={'board-card' + (st.sel.includes(r.task.uid) ? ' sel' : '') + (r.critical && st.critical ? ' crit' : '')}
@@ -50,8 +51,8 @@ export default function BoardView() {
                       {r.percent > 0 && r.percent < 100 && <span className="board-prog"><i style={{ width: r.percent + '%' }} /></span>}
                     </button>
                     <div className="board-move">
-                      {ci > 0 && <button className="icon-btn flip" title={'Move to ' + COLUMNS[ci - 1].label} aria-label={'Move ' + r.task.name + ' to ' + COLUMNS[ci - 1].label} onClick={() => moveTo(r, ci - 1)}><Icon name="chevR" /></button>}
-                      {ci < COLUMNS.length - 1 && <button className="icon-btn" title={'Move to ' + COLUMNS[ci + 1].label} aria-label={'Move ' + r.task.name + ' to ' + COLUMNS[ci + 1].label} onClick={() => moveTo(r, ci + 1)}><Icon name="chevR" /></button>}
+                      {ci > 0 && <button className="icon-btn flip" title={t('Move to {label}', { label: t(COLUMNS[ci - 1].label) })} aria-label={t('Move {name} to {label}', { name: r.task.name, label: t(COLUMNS[ci - 1].label) })} onClick={() => moveTo(r, ci - 1)}><Icon name="chevR" /></button>}
+                      {ci < COLUMNS.length - 1 && <button className="icon-btn" title={t('Move to {label}', { label: t(COLUMNS[ci + 1].label) })} aria-label={t('Move {name} to {label}', { name: r.task.name, label: t(COLUMNS[ci + 1].label) })} onClick={() => moveTo(r, ci + 1)}><Icon name="chevR" /></button>}
                     </div>
                   </article>
                 ))}

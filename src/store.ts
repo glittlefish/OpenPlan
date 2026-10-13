@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import OP from './core';
 import type { Project, Schedule, ViewName } from './types';
 import { capHistory } from './lib/history';
+import { setLang, t, type Lang } from './i18n';
 
 const STORE = 'openplan.project';
 export const PREV_STORE = 'openplan.project.previous';
@@ -14,6 +15,8 @@ export const VIEW_NAMES: Record<ViewName, string> = {
   gantt: 'Gantt Chart', board: 'Task Board', network: 'Network Diagram', wbs: 'WBS Chart', resources: 'Resource Sheet',
   org: 'Team Chart', workload: 'Resource Usage', budget: 'Cost & Budget', reports: 'Reports'
 };
+/** Localized view display name (PRD M17-7). */
+export function viewName(v: ViewName): string { return t(VIEW_NAMES[v]); }
 const VIEW_TABS: Partial<Record<ViewName, string>> = {
   gantt: 'task', board: 'task', resources: 'resource', org: 'resource', workload: 'resource', reports: 'report', budget: 'report'
 };
@@ -46,6 +49,8 @@ export interface UIState {
   annoSel: string | null;
   annoEdit: string | null;
   findOpen: boolean;
+  /** UI language (PRD M17-7): zh-CN default, en-US alternative; pushed to i18n on change. */
+  lang: Lang;
   /** Print settings (PRD M18): paper, orientation and header/footer slots; shared by chart views. */
   printCfg: PrintConfig;
 }
@@ -62,14 +67,14 @@ const UI_DEFAULTS: UIState = {
   view: 'gantt', zoom: 'week', critical: true, gridW: 600, ganttHide: 'none', drawer: window.innerWidth > 1100, netScope: 'all', netDates: false,
   netZoom: 1, wbsDepth: 99, filter: 'all', group: 'none', sort: 'id', cols: DEFAULT_COLS.slice(), showBaseline: true,
   report: 'overview', tab: 'task', timeline: true, ribbonMin: false, theme: 'light', bars: 'teal', fullYear: false, guide: true,
-  wbsBox: ['wbs'], annoSel: null, annoEdit: null, findOpen: false,
+  wbsBox: ['wbs'], annoSel: null, annoEdit: null, findOpen: false, lang: 'zh-CN',
   printCfg: {
     paper: 'a4', orient: 'landscape',
     header: [{ type: 'project', text: '' }, { type: 'none', text: '' }, { type: 'date', text: '' }],
     footer: [{ type: 'none', text: '' }, { type: 'page', text: '' }, { type: 'none', text: '' }]
   }
 };
-const PERSISTED_UI: (keyof UIState)[] = ['view', 'zoom', 'critical', 'gridW', 'ganttHide', 'drawer', 'netDates', 'wbsDepth', 'filter', 'group', 'sort', 'cols', 'showBaseline', 'report', 'tab', 'timeline', 'theme', 'bars', 'fullYear', 'guide', 'wbsBox', 'printCfg'];
+const PERSISTED_UI: (keyof UIState)[] = ['view', 'zoom', 'critical', 'gridW', 'ganttHide', 'drawer', 'netDates', 'wbsDepth', 'filter', 'group', 'sort', 'cols', 'showBaseline', 'report', 'tab', 'timeline', 'theme', 'bars', 'fullYear', 'guide', 'wbsBox', 'printCfg', 'lang'];
 
 export interface Dialog { type: string; props?: any }
 export type SaveState = 'ok' | 'full' | 'off';
@@ -117,6 +122,8 @@ function loadUI(): Partial<UIState> {
     if (out.zoom && !(ZOOMS as readonly string[]).includes(out.zoom)) delete out.zoom;
     if (out.ganttHide && !['none', 'table', 'chart'].includes(out.ganttHide)) delete out.ganttHide;
     if (out.gridW != null && !(out.gridW >= 160 && out.gridW <= 2400)) delete out.gridW;
+    if (out.lang && out.lang !== 'zh-CN' && out.lang !== 'en-US') delete out.lang;
+    if (out.lang) { setLang(out.lang); OP.util.setLang(out.lang); }
     return out;
   } catch {
     return {};
@@ -197,6 +204,7 @@ export const useStore = create<Store>((set, get) => ({
   setUI: patch => {
     // Dates are formatted by the engine, so rebuild the schedule to redraw every chart and table.
     if ('fullYear' in patch) { OP.util.setFullYear(patch.fullYear); patch = { ...patch, s: OP.schedule(get().p) }; }
+    if ('lang' in patch && patch.lang) { setLang(patch.lang); OP.util.setLang(patch.lang); }
     set(patch);
     if (Object.keys(patch).some(k => (PERSISTED_UI as string[]).includes(k))) saveUI(get());
   },

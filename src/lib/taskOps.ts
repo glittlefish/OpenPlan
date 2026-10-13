@@ -1,4 +1,5 @@
 import OP from '../core';
+import { t } from '../i18n';
 import { ask, S, focusKey, rowByUid } from '../store';
 import { activeCols, colDef, gridItems, type GroupItem } from './grid';
 import type { Annotation, BoxRule, BoxStyle, Project, Row, Task } from '../types';
@@ -27,11 +28,11 @@ export function setDuration(p: Project, t: Task, d: number) {
   t.milestone = d === 0;
 }
 
-export function setWork(p: Project, t: Task, hours: number): string {
-  const u = M.workUnits(p, t), d = +t.duration || 0;
-  if (!u) return 'Assign a person to this task before entering work.';
-  if (t.type === 'FixedDuration' && d > 0) scaleUnits(p, t, hours / (d * u * hpd(p)));
-  else { t.duration = round(hours / (u * hpd(p))); t.milestone = t.duration === 0; }
+export function setWork(p: Project, task: Task, hours: number): string {
+  const u = M.workUnits(p, task), d = +task.duration || 0;
+  if (!u) return t('Assign a person to this task before entering work.');
+  if (task.type === 'FixedDuration' && d > 0) scaleUnits(p, task, hours / (d * u * hpd(p)));
+  else { task.duration = round(hours / (u * hpd(p))); task.milestone = task.duration === 0; }
   return '';
 }
 
@@ -84,10 +85,10 @@ function wouldLoop(mutate: (p: Project) => void) {
 export function setPreds(uid: number, text: string): boolean {
   const st = S(), res = M.parsePreds(st.p, text, uid);
   if (res.errors.length) {
-    st.toast('Could not read "' + res.errors.join(', ') + '". Use task IDs, e.g. 3, 5SS+2d, 7FF.', true);
+    st.toast(t('Could not read "{list}". Use task IDs, e.g. 3, 5SS+2d, 7FF.', { list: res.errors.join(', ') }), true);
     return false;
   }
-  if (wouldLoop(p => { findTask(p, uid).preds = res.preds; })) { st.toast('That link would create a dependency loop.', true); return false; }
+  if (wouldLoop(p => { findTask(p, uid).preds = res.preds; })) { st.toast(t('That link would create a dependency loop.'), true); return false; }
   st.commit(p => { findTask(p, uid).preds = res.preds; });
   return true;
 }
@@ -95,9 +96,9 @@ export function setPreds(uid: number, text: string): boolean {
 export function addLink(fromUid: number, toUid: number): boolean {
   const st = S(), target = st.p.tasks.find(t => t.uid === toUid);
   if (!target || fromUid === toUid) return false;
-  if (target.preds.some(l => l.uid === fromUid)) { st.toast('Those tasks are already linked.'); return false; }
+  if (target.preds.some(l => l.uid === fromUid)) { st.toast(t('Those tasks are already linked.')); return false; }
   const add = (p: Project) => { findTask(p, toUid).preds.push({ uid: fromUid, type: 'FS', lag: 0 }); };
-  if (wouldLoop(add)) { st.toast('That link would create a dependency loop.', true); return false; }
+  if (wouldLoop(add)) { st.toast(t('That link would create a dependency loop.'), true); return false; }
   st.commit(add);
   return true;
 }
@@ -115,9 +116,9 @@ export function addTask(milestone: boolean) {
   }
   let uid = 0;
   st.commit(pp => {
-    const t = M.newTask(pp, { name: milestone ? 'New milestone' : 'New task', level: lvl, duration: milestone ? 0 : 1, milestone });
-    uid = t.uid;
-    pp.tasks.splice(pos, 0, t);
+    const nt = M.newTask(pp, { name: milestone ? t('New milestone') : t('New task'), level: lvl, duration: milestone ? 0 : 1, milestone });
+    uid = nt.uid;
+    pp.tasks.splice(pos, 0, nt);
   });
   st.setUI({ view: 'gantt', filter: 'all', group: 'none' });
   st.select([uid], uid);
@@ -151,9 +152,9 @@ export function addTaskNear(refUid: number | null, where: 'before' | 'after' | '
   }
   let uid = 0;
   st.commit(pp => {
-    const t = M.newTask(pp, { name: 'New task', level: lvl, duration: 1 });
-    uid = t.uid;
-    pp.tasks.splice(pos, 0, t);
+    const nt = M.newTask(pp, { name: t('New task'), level: lvl, duration: 1 });
+    uid = nt.uid;
+    pp.tasks.splice(pos, 0, nt);
   });
   st.select([uid], uid);
   return uid;
@@ -165,7 +166,7 @@ export function moveSubtreeTo(uid: number, targetUid: number): boolean {
   const st = S(), p = st.p, idx = M.indexByUid(p);
   const i = idx[uid], ti = idx[targetUid];
   if (i == null || ti == null || uid === targetUid) return false;
-  if (ti > i && ti < M.subtreeEnd(p, i)) { st.toast('A task cannot be moved into its own subtree.', true); return false; }
+  if (ti > i && ti < M.subtreeEnd(p, i)) { st.toast(t('A task cannot be moved into its own subtree.'), true); return false; }
   st.commit(pp => {
     const a = M.indexByUid(pp)[uid], e = M.subtreeEnd(pp, a);
     const block = pp.tasks.splice(a, e - a);
@@ -199,8 +200,8 @@ export function copyTasks(uids: number[]): number {
     clip.push(JSON.parse(JSON.stringify(p.tasks.slice(i, e))));
     count += e - i;
   }
-  if (count) st.toast('Copied ' + count + ' task' + (count > 1 ? 's' : '') + '.');
-  else st.toast('Nothing to copy.', true);
+  if (count) st.toast(count > 1 ? t('Copied {n} tasks.', { n: count }) : t('Copied {n} task.', { n: count }));
+  else st.toast(t('Nothing to copy.'), true);
   return count;
 }
 
@@ -256,7 +257,7 @@ export function indent(dir: 1 | -1) {
 
 export function move(dir: 1 | -1) {
   const st = S(), blocks = selectedBlocks(st.p);
-  if (blocks.length !== 1) { st.toast('Select one task (or one summary) to move.'); return; }
+  if (blocks.length !== 1) { st.toast(t('Select one task (or one summary) to move.')); return; }
   st.commit(p => {
     const i = blocks[0], end = M.subtreeEnd(p, i), lv = p.tasks[i].level;
     let k: number;
@@ -283,7 +284,7 @@ export function linkSelected() {
       if (!b.preds.some(l => l.uid === a.uid)) b.preds.push({ uid: a.uid, type: 'FS', lag: 0 });
     }
   };
-  if (wouldLoop(link)) { st.toast('Linking these tasks would create a dependency loop.', true); return; }
+  if (wouldLoop(link)) { st.toast(t('Linking these tasks would create a dependency loop.'), true); return; }
   st.commit(link);
 }
 
@@ -303,7 +304,7 @@ export function deleteSelected() {
   const uids: number[] = [];
   blocks.forEach(i => { for (let k = i; k < M.subtreeEnd(st.p, i); k++) uids.push(st.p.tasks[k].uid); });
   const run = () => { S().commit(p => { M.removeTasks(p, uids); }); S().select([]); };
-  if (uids.length > 1) ask('Delete ' + uids.length + ' tasks (including subtasks)?', run, 'Delete');
+  if (uids.length > 1) ask(t('Delete {n} tasks (including subtasks)?', { n: uids.length }), run, t('Delete'));
   else run();
 }
 
@@ -322,7 +323,7 @@ export function setPercent(uid: number, v: number) {
 
 export function markPercent(v: number) {
   const st = S(), rows = st.sel.map(rowByUid).filter((r: any) => r && !r.summary);
-  if (!rows.length) { st.toast('Select tasks first (summaries are updated from their subtasks).'); return; }
+  if (!rows.length) { st.toast(t('Select tasks first (summaries are updated from their subtasks).')); return; }
   st.commit(p => {
     rows.forEach((r: any) => {
       const t = findTask(p, r.task.uid);
@@ -350,7 +351,7 @@ export function updateAsScheduled() {
       if (pct >= 100 && !t.actualFinish) t.actualFinish = U.iso(r.finishDn);
     });
   });
-  st.toast(n ? 'Updated ' + n + ' tasks to ' + U.fmt(s.statusDn) : 'Nothing to update — tasks are already at or ahead of the status date.');
+  st.toast(n ? t('Updated {n} tasks to {date}', { n, date: U.fmt(s.statusDn) }) : t('Nothing to update — tasks are already at or ahead of the status date.'));
 }
 
 export function setBaseline() {
@@ -358,23 +359,23 @@ export function setBaseline() {
     const st = S();
     st.setUI({ showBaseline: true });
     st.commit(p => { OP.setBaseline(p); if (p.status === 'Draft') p.status = 'Baselined'; });
-    st.toast('Baseline saved — variances and earned value are now measured against it');
+    st.toast(t('Baseline saved — variances and earned value are now measured against it'));
   };
-  if (S().p.baseline) ask('Replace the existing baseline with the current plan?', run, 'Replace');
+  if (S().p.baseline) ask(t('Replace the existing baseline with the current plan?'), run, t('Replace'));
   else run();
 }
 
 export function clearBaseline() {
-  ask('Clear the baseline?', () => S().commit(p => { p.baseline = null; }), 'Clear');
+  ask(t('Clear the baseline?'), () => S().commit(p => { p.baseline = null; }), t('Clear'));
 }
 
 export function levelAll() {
   const st = S();
   let res: any = null;
   st.commit(p => { res = OP.level(p); });
-  if (!res || (!res.moved && !res.unresolved.length)) st.toast('No overallocations to level.');
-  else if (res.unresolved.length) st.toast('Leveled ' + res.moved + ' tasks. Still overallocated: ' + res.unresolved.join(', ') + ' (assigned above max units, or on tasks that cannot move: started, in progress or Must start/finish on)', true);
-  else st.toast('Leveled — delayed ' + res.moved + ' task' + (res.moved === 1 ? '' : 's'));
+  if (!res || (!res.moved && !res.unresolved.length)) st.toast(t('No overallocations to level.'));
+  else if (res.unresolved.length) st.toast(t('Leveled {n} tasks. Still overallocated: {list} (assigned above max units, or on tasks that cannot move: started, in progress or Must start/finish on)', { n: res.moved, list: res.unresolved.join(', ') }), true);
+  else st.toast(t(res.moved === 1 ? 'Leveled — delayed {n} task' : 'Leveled — delayed {n} tasks', { n: res.moved }));
 }
 
 export function clearLeveling() { S().commit(p => { p.tasks.forEach(t => { t.levelDelay = 0; }); }); }
@@ -385,7 +386,7 @@ export function createRecurring(o: { name: string; duration: number; first: numb
   const lvl = ids.length ? st.p.tasks[ids[ids.length - 1]].level : 1;
   let head = 0;
   st.commit(p => {
-    const summary = M.newTask(p, { name: o.name, level: lvl, notes: 'Recurring: every ' + o.every + ' ' + o.unit + (o.every > 1 ? 's' : '') + ', ' + o.count + ' times' });
+    const summary = M.newTask(p, { name: o.name, level: lvl, notes: t('Recurring: every {n} {unit}, {count} times', { n: o.every, unit: t(o.every > 1 ? o.unit + 's' : o.unit), count: o.count }) });
     head = summary.uid;
     const list = [summary];
     for (let k = 0; k < o.count; k++) {
@@ -495,15 +496,15 @@ export function fillDown(): void {
   const st = S();
   const fk = (document.activeElement as HTMLElement | null)?.dataset?.fk || '';
   const m = /^(\d+):(.+)$/.exec(fk);
-  if (!m) { st.toast('Focus a cell in the column to fill, select more rows, then press Ctrl+D.', true); return; }
+  if (!m) { st.toast(t('Focus a cell in the column to fill, select more rows, then press Ctrl+D.'), true); return; }
   const uid = +m[1], col = m[2];
   const src = rowByUid(uid);
   const c = colDef(st, col);
   if (!src || !c) return;
   const targets = st.sel.filter(u => u !== uid && rowByUid(u));
-  if (!targets.length) { st.toast('Select the rows to fill (Ctrl+click or Shift+click), then press Ctrl+D.', true); return; }
-  if (col === 'preds') { st.toast('Predecessors cannot be filled down — they are links between tasks.', true); return; }
-  if (!c.edit && col !== 'name') { st.toast('This column is read-only.', true); return; }
+  if (!targets.length) { st.toast(t('Select the rows to fill (Ctrl+click or Shift+click), then press Ctrl+D.'), true); return; }
+  if (col === 'preds') { st.toast(t('Predecessors cannot be filled down — they are links between tasks.'), true); return; }
+  if (!c.edit && col !== 'name') { st.toast(t('This column is read-only.'), true); return; }
 
   let filled = 0, skipped = 0;
   st.commit(p => {
@@ -523,7 +524,7 @@ export function fillDown(): void {
     });
     if (!filled && !skipped) return false;
   });
-  st.toast('Filled ' + filled + ' row' + (filled === 1 ? '' : 's') + (skipped ? ' · ' + skipped + ' read-only skipped' : ''));
+  st.toast(t(filled === 1 ? 'Filled {n} row' : 'Filled {n} rows', { n: filled }) + (skipped ? ' · ' + t('{n} read-only skipped', { n: skipped }) : ''));
 }
 
 // Tolerant date parsing for pasted data: ISO, Y/M/D in either order, or an Excel serial number.
@@ -549,7 +550,7 @@ export function pasteCells(text: string, anchorUid: number, anchorCol: string): 
   if (grid.length === 1 && grid[0].length === 1) return; // single cell: let the default paste handle it
   const ks = activeCols(st);
   const col0 = ks.indexOf(anchorCol);
-  if (col0 < 0) { st.toast('Click a cell first, then paste.', true); return; }
+  if (col0 < 0) { st.toast(t('Click a cell first, then paste.'), true); return; }
   const list = gridItems(st).filter((x): x is Row => !(x as GroupItem).group);
   const row0 = list.findIndex(r => r.task.uid === anchorUid);
   if (row0 < 0) return;
@@ -606,6 +607,6 @@ export function pasteCells(text: string, anchorUid: number, anchorCol: string): 
     });
     if (!pasted) return false;
   });
-  st.toast('Pasted ' + pasted + ' cell' + (pasted === 1 ? '' : 's')
-    + (dropped ? ' · ' + dropped + ' skipped' : '') + (extra ? ' · ' + extra + ' rows beyond the task list ignored' : ''));
+  st.toast(t(pasted === 1 ? 'Pasted {n} cell' : 'Pasted {n} cells', { n: pasted })
+    + (dropped ? ' · ' + t('{n} skipped', { n: dropped }) : '') + (extra ? ' · ' + t('{n} rows beyond the task list ignored', { n: extra }) : ''));
 }

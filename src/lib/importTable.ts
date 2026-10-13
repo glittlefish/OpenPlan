@@ -1,4 +1,5 @@
 import OP from '../core';
+import { t } from '../i18n';
 import type { Project } from '../types';
 
 const M = OP.model;
@@ -41,7 +42,7 @@ export interface ImportResult { project: Project; tasks: number; resources: numb
 // columns are read as task name, duration and predecessors. Predecessors refer to the ID column, or row numbers.
 export function projectFromTable(text: string): ImportResult {
   const rows = parseTable(text), warnings: string[] = [];
-  if (!rows.length) throw new Error('There are no rows to import.');
+  if (!rows.length) throw new Error(t('There are no rows to import.'));
   const cols: Cols = {};
   rows[0].forEach((h, i) => {
     const hit = COLUMNS.find(([k, re]) => cols[k] == null && re.test(h.trim()));
@@ -53,7 +54,7 @@ export function projectFromTable(text: string): ImportResult {
   const get = (r: string[], k: keyof Cols) => (cols[k] == null ? '' : (r[cols[k]!] ?? '').trim());
 
   let p = M.blank();
-  p.name = 'Imported plan';
+  p.name = t('Imported plan');
   const resByName = new Map<string, number>(), idToRow = new Map<string, number>(), predText: string[] = [];
   let badDur = 0;
   data.forEach((r, i) => {
@@ -79,7 +80,7 @@ export function projectFromTable(text: string): ImportResult {
     p.tasks.push(t);
     predText.push(get(r, 'preds'));
   });
-  if (!p.tasks.length) throw new Error('No task names were found. Put task names in the first column, or add a "Task Name" heading.');
+  if (!p.tasks.length) throw new Error(t('No task names were found. Put task names in the first column, or add a "Task Name" heading.'));
   // Rewrite each predecessor's ID as the task's row number, keeping its link type and lag.
   const toRows = (text: string) => text.split(/[,;]/).map(part => {
     const m = /^\s*(.+?)\s*(FS|SS|FF|SF)?\s*([+-]\s*\d+(?:\.\d+)?\s*d?)?\s*$/i.exec(part);
@@ -91,8 +92,8 @@ export function projectFromTable(text: string): ImportResult {
     t.preds = res.preds;
     badPreds += res.errors.length;
   });
-  if (badDur) warnings.push(badDur + ' duration' + (badDur > 1 ? 's were' : ' was') + ' not understood and set to 1 day');
-  if (badPreds) warnings.push(badPreds + ' predecessor' + (badPreds > 1 ? 's were' : ' was') + ' not understood and skipped');
+  if (badDur) warnings.push(t(badDur > 1 ? '{n} durations were not understood and set to 1 day' : '{n} duration was not understood and set to 1 day', { n: badDur }));
+  if (badPreds) warnings.push(t(badPreds > 1 ? '{n} predecessors were not understood and skipped' : '{n} predecessor was not understood and skipped', { n: badPreds }));
   p = M.normalize(p);
   return { project: p, tasks: p.tasks.length, resources: p.resources.length, warnings };
 }

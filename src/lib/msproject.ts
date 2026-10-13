@@ -2,6 +2,7 @@
 // Microsoft Project ("http://schemas.microsoft.com/project"); other tools that speak
 // it (GanttProject, ProjectLibre) round-trip as well.
 import OP from '../core';
+import { t } from '../i18n';
 import type { Project, Task, Resource, Row, Link } from '../types';
 
 const U = OP.util;
@@ -191,9 +192,9 @@ function deep(root: Document | Element, name: string): Element[] {
 
 export function fromMsProjectXml(text: string): MsProjectImport {
   const doc = new DOMParser().parseFromString(text, 'application/xml');
-  if (doc.getElementsByTagName('parsererror').length) throw new Error('This file is not valid XML.');
+  if (doc.getElementsByTagName('parsererror').length) throw new Error(t('This file is not valid XML.'));
   const root = doc.documentElement;
-  if (!root || root.localName !== 'Project') throw new Error('This XML file has no <Project> root element.');
+  if (!root || root.localName !== 'Project') throw new Error(t('This XML file has no <Project> root element.'));
 
   const warnings: string[] = [];
   const counts = { tasks: 0, links: 0, resources: 0, assignments: 0 };
@@ -208,7 +209,7 @@ export function fromMsProjectXml(text: string): MsProjectImport {
   deep(root, 'Resource').forEach((el, i) => {
     const xmlUid = num(child(el, 'UID')) || i + 1;
     const name = txt(child(el, 'Name'));
-    if (!name) { warnings.push('Skipped a resource without a name.'); return; }
+    if (!name) { warnings.push(t('Skipped a resource without a name.')); return; }
     const msType = num(child(el, 'Type'));
     const r: Resource = {
       uid: 0, name, initials: '', role: '', type: 'Work',
@@ -229,7 +230,7 @@ export function fromMsProjectXml(text: string): MsProjectImport {
   taskEls.forEach((el, i) => {
     const name = txt(child(el, 'Name'));
     const level = Math.max(1, num(child(el, 'OutlineLevel')) || 1);
-    if (!name) { warnings.push('Skipped task #' + (i + 1) + ' (no name).'); return; }
+    if (!name) { warnings.push(t('Skipped task #{n} (no name).', { n: i + 1 })); return; }
     const durEl = child(el, 'Duration');
     let duration = 0;
     const dm = durEl?.textContent ? /^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?/.exec(durEl.textContent) : null;
@@ -238,7 +239,7 @@ export function fromMsProjectXml(text: string): MsProjectImport {
       duration = minutes / minutesPerDay;
     }
     const msConstraint = num(child(el, 'ConstraintType'));
-    const t: Task = {
+    const task: Task = {
       uid: nextUid++, name, level,
       duration: Math.round(duration * 100) / 100,
       milestone: num(child(el, 'Milestone')) === 1 || duration === 0,
@@ -257,8 +258,8 @@ export function fromMsProjectXml(text: string): MsProjectImport {
       custom: {},
     };
     const xmlUid = num(child(el, 'UID')) || i + 1;
-    uidByXml.set(xmlUid, t.uid);
-    tasks.push(t);
+    uidByXml.set(xmlUid, task.uid);
+    tasks.push(task);
   });
   counts.tasks = tasks.length;
 
@@ -269,9 +270,9 @@ export function fromMsProjectXml(text: string): MsProjectImport {
     if (!toUid) return;
     const to = tasks.find(t => t.uid === toUid)!;
     kids(el, 'PredecessorLink').forEach(l => {
-      if (num(child(l, 'CrossProject')) === 1) { warnings.push('Ignored a cross-project link on "' + to.name + '".'); return; }
+      if (num(child(l, 'CrossProject')) === 1) { warnings.push(t('Ignored a cross-project link on "{name}".', { name: to.name })); return; }
       const fromUid = uidByXml.get(num(child(l, 'PredecessorUID')));
-      if (!fromUid || fromUid === toUid) { warnings.push('Ignored a link to a missing task on "' + to.name + '".'); return; }
+      if (!fromUid || fromUid === toUid) { warnings.push(t('Ignored a link to a missing task on "{name}".', { name: to.name })); return; }
       const lagMinutes = num(child(l, 'LinkLag')) / 10; // LinkLag is in tenths of a minute
       const type = (LINK_FROM_MS[num(child(l, 'Type'))] || 'FS') as Link['type'];
       if (to.preds.some(x => x.uid === fromUid && x.type === type)) return;
@@ -308,15 +309,15 @@ export function fromMsProjectXml(text: string): MsProjectImport {
     }
     days.filter(d => num(child(d, 'DayType')) === 0).forEach(d => {
       const from = txt(child(child(d, 'TimePeriod'), 'FromDate')).slice(0, 10);
-      if (from) exceptions.push({ date: from, working: num(child(d, 'DayWorking')) === 1, reason: 'Imported from MS Project' });
+      if (from) exceptions.push({ date: from, working: num(child(d, 'DayWorking')) === 1, reason: t('Imported from MS Project') });
     });
   } else {
-    warnings.push('No calendar found; using the default Monday-Friday calendar.');
+    warnings.push(t('No calendar found; using the default Monday-Friday calendar.'));
   }
 
   // --- Assemble the project on top of a blank one so every field has a value. ---
   const p: Project = OP.model.blank();
-  p.name = txt(child(root, 'Name')) || txt(child(root, 'Title')) || 'Imported project';
+  p.name = txt(child(root, 'Name')) || txt(child(root, 'Title')) || t('Imported project');
   p.manager = txt(child(root, 'Author'));
   p.organization = txt(child(root, 'Company'));
   p.currency = txt(child(root, 'CurrencySymbol')) || p.currency;

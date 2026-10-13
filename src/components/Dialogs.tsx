@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 import OP from '../core';
-import { useStore, S, VIEW_NAMES } from '../store';
+import { useStore, S, viewName } from '../store';
+import { t } from '../i18n';
 import * as ops from '../lib/taskOps';
 import Icon from './Icon';
 import { TaskEditor } from './Drawer';
@@ -16,7 +17,7 @@ import type { PrintConfig, PrintSlot } from '../store';
 const U = OP.util;
 const STATUSES = ['Draft', 'In review', 'Approved', 'Baselined', 'Final'];
 
-function Modal({ title, children, onSubmit, okLabel = 'Save', cancelLabel = 'Cancel', noOk, backdropClose, onClose }: {
+function Modal({ title, children, onSubmit, okLabel = t('Save'), cancelLabel = t('Cancel'), noOk, backdropClose, onClose }: {
   title: string; children: ReactNode; onSubmit?: (fd: FormData) => boolean | void; okLabel?: ReactNode; cancelLabel?: string; noOk?: boolean;
   backdropClose?: boolean; onClose?: () => void;
 }) {
@@ -46,7 +47,7 @@ function Modal({ title, children, onSubmit, okLabel = 'Save', cancelLabel = 'Can
   return (
     <dialog ref={ref} onClose={close} onClick={backdrop} onCancel={e => { e.preventDefault(); close(); }}>
       <form onSubmit={submit}>
-        <div className="dlg-head"><h2>{title}</h2><button type="button" className="icon-btn" aria-label="Close" onClick={close}><Icon name="x" /></button></div>
+        <div className="dlg-head"><h2>{title}</h2><button type="button" className="icon-btn" aria-label={t('Close')} onClick={close}><Icon name="x" /></button></div>
         <div className="dlg-body">{children}</div>
         <div className="dlg-foot">
           <button type="button" className="btn" onClick={close}>{cancelLabel}</button>
@@ -75,7 +76,7 @@ function SettingsDialog() {
   const patchField = (k: number, patch: Partial<CustomField>) => setFields(fields.map((f, i) => (i === k ? { ...f, ...patch } : f)));
   const statuses = STATUSES.includes(p.status) || !p.status ? STATUSES : STATUSES.concat([p.status]);
   return (
-    <Modal title="Project information" onSubmit={fd => {
+    <Modal title={t('Project information')} onSubmit={fd => {
       const bad: string[] = [];
       const cfs = fields.map(f => ({ ...f, name: f.name.trim() })).filter(f => f.name);
       st.commit(pp => {
@@ -94,33 +95,33 @@ function SettingsDialog() {
         pp.tasks.forEach(t => { Object.keys(t.custom).forEach(id => { if (!keep.has(id)) delete t.custom[id]; }); });
       });
     }}>
-      <F label="Project name" name="name" value={p.name} />
-      <div className="row2"><F label="Issuing organisation" name="organization" value={p.organization} /><F label="Project manager" name="manager" value={p.manager} /></div>
+      <F label={t('Project name')} name="name" value={p.name} />
+      <div className="row2"><F label={t('Issuing organisation')} name="organization" value={p.organization} /><F label={t('Project manager')} name="manager" value={p.manager} /></div>
       <div className="row2">
-        <label className="field"><span>Status</span><select className="sel" name="status" defaultValue={p.status}>
-          {statuses.map(s => <option key={s}>{s}</option>)}
+        <label className="field"><span>{t('Status')}</span><select className="sel" name="status" defaultValue={p.status}>
+          {statuses.map(s => <option key={s} value={s}>{t(s)}</option>)}
         </select></label>
-        <F label="Date of issue" name="issueDate" value={p.issueDate} type="date" />
+        <F label={t('Date of issue')} name="issueDate" value={p.issueDate} type="date" />
       </div>
-      <div className="row2"><F label="Project start date" name="start" value={p.start} type="date" required /><F label="Status date (for tracking)" name="statusDate" value={p.statusDate} type="date" /></div>
+      <div className="row2"><F label={t('Project start date')} name="start" value={p.start} type="date" required /><F label={t('Status date (for tracking)')} name="statusDate" value={p.statusDate} type="date" /></div>
       <div className="row3">
-        <F label="Budget" name="budget" value={p.budget} type="number" min={0} step={1000} />
-        <F label="Currency symbol" name="currency" value={p.currency} />
-        <F label="Hours per working day" name="hoursPerDay" value={p.hoursPerDay} type="number" min={1} max={24} step={0.5} />
+        <F label={t('Budget')} name="budget" value={p.budget} type="number" min={0} step={1000} />
+        <F label={t('Currency symbol')} name="currency" value={p.currency} />
+        <F label={t('Hours per working day')} name="hoursPerDay" value={p.hoursPerDay} type="number" min={1} max={24} step={0.5} />
       </div>
-      <p className="muted">Holidays and working days are managed in Project › Change Working Time.</p>
-      <div className="field"><span>Custom task fields</span>
+      <p className="muted">{t('Holidays and working days are managed in Project › Change Working Time.')}</p>
+      <div className="field"><span>{t('Custom task fields')}</span>
         <div className="mini-list">
           {fields.map((f, k) => (
             <div className="mini-row cf" key={f.id}>
-              <input className="inp" aria-label="Field name" placeholder="e.g. Owner" value={f.name} onChange={e => patchField(k, { name: e.target.value })} />
-              <select className="sel" aria-label="Field type" value={f.type} onChange={e => patchField(k, { type: e.target.value as CustomField['type'] })}>
-                <option value="text">Text</option><option value="number">Number</option>
+              <input className="inp" aria-label={t('Field name')} placeholder={t('e.g. Owner')} value={f.name} onChange={e => patchField(k, { name: e.target.value })} />
+              <select className="sel" aria-label={t('Field type')} value={f.type} onChange={e => patchField(k, { type: e.target.value as CustomField['type'] })}>
+                <option value="text">{t('Text')}</option><option value="number">{t('Number')}</option>
               </select>
-              <button type="button" className="icon-btn" aria-label="Remove field" onClick={() => setFields(fields.filter((_, i) => i !== k))}><Icon name="x" /></button>
+              <button type="button" className="icon-btn" aria-label={t('Remove field')} onClick={() => setFields(fields.filter((_, i) => i !== k))}><Icon name="x" /></button>
             </div>
           ))}
-          <button type="button" className="btn ghost" onClick={() => setFields(fields.concat([{ id: 'c' + Date.now().toString(36) + fields.length, name: '', type: 'text' }]))}><Icon name="plus" />Add field</button>
+          <button type="button" className="btn ghost" onClick={() => setFields(fields.concat([{ id: 'c' + Date.now().toString(36) + fields.length, name: '', type: 'text' }]))}><Icon name="plus" />{t('Add field')}</button>
         </div>
       </div>
     </Modal>
@@ -130,7 +131,7 @@ function SettingsDialog() {
 function RecurringDialog() {
   const st = useStore();
   return (
-    <Modal title="Recurring task" okLabel="Create" onSubmit={fd => {
+    <Modal title={t('Recurring task')} okLabel={t('Create')} onSubmit={fd => {
       const name = String(fd.get('name')).trim(), first = U.parseDate(String(fd.get('first')));
       if (!name || first == null) return false;
       ops.createRecurring({
@@ -139,19 +140,19 @@ function RecurringDialog() {
       });
       st.setView('gantt');
     }}>
-      <F label="Task name" name="name" value="Sprint review" required />
+      <F label={t('Task name')} name="name" value="Sprint review" required />
       <div className="row3">
-        <F label="Duration (days)" name="duration" value={1} type="number" min={0} step={0.5} />
-        <F label="First occurrence" name="first" value={U.iso(st.s.startDn)} type="date" required />
-        <F label="Occurrences" name="count" value={4} type="number" min={1} max={104} />
+        <F label={t('Duration (days)')} name="duration" value={1} type="number" min={0} step={0.5} />
+        <F label={t('First occurrence')} name="first" value={U.iso(st.s.startDn)} type="date" required />
+        <F label={t('Occurrences')} name="count" value={4} type="number" min={1} max={104} />
       </div>
       <div className="row2">
-        <label className="field"><span>Repeat</span><select className="sel" name="unit" defaultValue="week">
-          <option value="week">Weekly</option><option value="month">Monthly</option><option value="day">Daily (working days)</option>
+        <label className="field"><span>{t('Repeat')}</span><select className="sel" name="unit" defaultValue="week">
+          <option value="week">{t('Weekly')}</option><option value="month">{t('Monthly')}</option><option value="day">{t('Daily (working days)')}</option>
         </select></label>
-        <F label="Every" name="every" value={2} type="number" min={1} max={52} />
+        <F label={t('Every')} name="every" value={2} type="number" min={1} max={52} />
       </div>
-      <p className="muted small">Creates a summary task with one subtask per occurrence, each fixed with a “Start no earlier than” date.</p>
+      <p className="muted small">{t('Creates a summary task with one subtask per occurrence, each fixed with a “Start no earlier than” date.')}</p>
     </Modal>
   );
 }
@@ -161,7 +162,7 @@ function ResourceDialog({ uid }: { uid: number }) {
   if (!r) return null;
   const rates = (r.rates || []).map(e => e.from + ' ' + e.rate).join('\n');
   return (
-    <Modal title={r.name || 'Resource'} onSubmit={fd => {
+    <Modal title={r.name || t('Resource')} onSubmit={fd => {
       const bad: string[] = [];
       const vac = parseDates(fd.get('vacations'), bad);
       const rateList: { from: string; rate: number }[] = [];
@@ -170,7 +171,7 @@ function ResourceDialog({ uid }: { uid: number }) {
         if (m) rateList.push({ from: m[1], rate: +m[2] });
         else if (line.trim()) bad.push(line.trim());
       });
-      if (bad.length) st.toast('Ignored: ' + bad.join(', '), true);
+      if (bad.length) st.toast(t('Ignored: {list}', { list: bad.join(', ') }), true);
       st.commit(p => {
         const x = p.resources.find(y => y.uid === uid)!;
         if (x.kind === 'Work') {
@@ -183,17 +184,17 @@ function ResourceDialog({ uid }: { uid: number }) {
       });
     }}>
       {r.kind === 'Work' && <>
-        <label className="field"><span>Working days</span><div className="chk-row">
-          {[1, 2, 3, 4, 5, 6, 0].map(d => <label key={d} className="chk"><input type="checkbox" name="wd" value={d} defaultChecked={r.workDays.includes(d)} />{U.DAYS[d]}</label>)}
+        <label className="field"><span>{t('Working days')}</span><div className="chk-row">
+          {[1, 2, 3, 4, 5, 6, 0].map(d => <label key={d} className="chk"><input type="checkbox" name="wd" value={d} defaultChecked={r.workDays.includes(d)} />{t(U.DAYS[d])}</label>)}
         </div></label>
-        <label className="field"><span>Vacations / days off (one date per line, YYYY-MM-DD)</span><textarea className="inp" name="vacations" rows={3} defaultValue={r.vacations.join('\n')} /></label>
-        <label className="field"><span>Rate changes (one per line: effective date and new hourly rate)</span><textarea className="inp" name="rates" rows={3} placeholder="2026-04-01 8500" defaultValue={rates} /></label>
-        <p className="muted small">Working days and vacations set when this person is available: they drive overallocation warnings and resource leveling.</p>
+        <label className="field"><span>{t('Vacations / days off (one date per line, YYYY-MM-DD)')}</span><textarea className="inp" name="vacations" rows={3} defaultValue={r.vacations.join('\n')} /></label>
+        <label className="field"><span>{t('Rate changes (one per line: effective date and new hourly rate)')}</span><textarea className="inp" name="rates" rows={3} placeholder="2026-04-01 8500" defaultValue={rates} /></label>
+        <p className="muted small">{t('Working days and vacations set when this person is available: they drive overallocation warnings and resource leveling.')}</p>
       </>}
-      {r.kind === 'Material' && <F label="Material label (unit)" name="materialLabel" value={r.materialLabel} placeholder="e.g. licences, servers" />}
+      {r.kind === 'Material' && <F label={t('Material label (unit)')} name="materialLabel" value={r.materialLabel} placeholder={t('e.g. licences, servers')} />}
       {r.kind !== 'Cost'
-        ? <F label={'Cost per use (' + st.p.currency + ')'} name="costPerUse" value={r.costPerUse} type="number" min={0} step={100} />
-        : <p className="muted">Cost resources (travel, licences, fees) have no rate: enter the amount on each task assignment.</p>}
+        ? <F label={t('Cost per use ({currency})', { currency: st.p.currency })} name="costPerUse" value={r.costPerUse} type="number" min={0} step={100} />
+        : <p className="muted">{t('Cost resources (travel, licences, fees) have no rate: enter the amount on each task assignment.')}</p>}
     </Modal>
   );
 }
@@ -209,25 +210,25 @@ const SHORTCUTS: [ReactNode, string][] = [
 
 function AboutDialog() {
   return (
-    <Modal title="About OpenPlan" cancelLabel="Close" noOk>
+    <Modal title={t('About OpenPlan')} cancelLabel={t('Close')} noOk>
       <div className="about-head">
         <img src="./assets/OpenPlan.png" alt="" width={44} height={44} />
-        <div><h3>OpenPlan</h3><span className="muted">Version {version} · Free, browser-based project planning</span></div>
+        <div><h3>OpenPlan</h3><span className="muted">{t('Version {version} · Free, browser-based project planning', { version })}</span></div>
       </div>
-      <p>Plan with a WBS, Gantt chart, critical path, network diagram, resources, leveling, baselines, tracking, earned value, budget and reports. Your project is saved automatically in this browser only; use <b>File › Save</b> to keep a copy as an .openplan file.</p>
+      <p>{t('Plan with a WBS, Gantt chart, critical path, network diagram, resources, leveling, baselines, tracking, earned value, budget and reports. Your project is saved automatically in this browser only; use')} <b>{t('File › Save')}</b> {t('to keep a copy as an .openplan file.')}</p>
       <section className="about-sec">
-        <h4>Keyboard shortcuts</h4>
-        <table className="about-keys"><tbody>{SHORTCUTS.map(([keys, action]) => <tr key={action}><td>{keys}</td><td>{action}</td></tr>)}</tbody></table>
+        <h4>{t('Keyboard shortcuts')}</h4>
+        <table className="about-keys"><tbody>{SHORTCUTS.map(([keys, action]) => <tr key={action}><td>{keys}</td><td>{t(action)}</td></tr>)}</tbody></table>
       </section>
       <section className="about-sec">
-        <h4>Tips</h4>
+        <h4>{t('Tips')}</h4>
         <dl className="about-tips">
-          <dt>Rename the project</dt><dd>Click the name in the title bar. <kbd>Enter</kbd> saves, <kbd>Esc</kbd> cancels.</dd>
-          <dt>Gantt chart</dt><dd>Drag a bar to move it (sets a “Start no earlier than” constraint), drag its right edge to change the duration, or drag it onto another bar to link the two.</dd>
-          <dt>Predecessors</dt><dd>Type task IDs separated by commas. Link types are FS (default), SS, FF and SF, with optional lag, e.g. <code>3, 5SS+2d, 7FF-1d</code>.</dd>
+          <dt>{t('Rename the project')}</dt><dd>{t('Click the name in the title bar.')} <kbd>Enter</kbd> {t('saves')}, <kbd>Esc</kbd> {t('cancels')}.</dd>
+          <dt>{t('Gantt chart')}</dt><dd>{t('Drag a bar to move it (sets a “Start no earlier than” constraint), drag its right edge to change the duration, or drag it onto another bar to link the two.')}</dd>
+          <dt>{t('Predecessors')}</dt><dd>{t('Type task IDs separated by commas. Link types are FS (default), SS, FF and SF, with optional lag, e.g.')} <code>3, 5SS+2d, 7FF-1d</code>.</dd>
         </dl>
       </section>
-      <p className="about-foot muted">Open source under the <a href="https://github.com/MNSBaanu/OpenPlan/blob/main/LICENSE" target="_blank" rel="noreferrer">MIT License</a> · <a href="https://github.com/MNSBaanu/OpenPlan" target="_blank" rel="noreferrer">Source on GitHub</a> · Made by MNS Baanu</p>
+      <p className="about-foot muted">{t('Open source under the')} <a href="https://github.com/MNSBaanu/OpenPlan/blob/main/LICENSE" target="_blank" rel="noreferrer">{t('MIT License')}</a> · <a href="https://github.com/MNSBaanu/OpenPlan" target="_blank" rel="noreferrer">{t('Source on GitHub')}</a> · {t('Made by MNS Baanu')}</p>
     </Modal>
   );
 }
@@ -242,22 +243,22 @@ function ImportDialog() {
   const ok = result && 'project' in result ? result : null;
   const pickFile = async (file?: File) => {
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { S().toast('That file is larger than 5 MB. Choose a CSV task list.', true); return; }
+    if (file.size > 5 * 1024 * 1024) { S().toast(t('That file is larger than 5 MB. Choose a CSV task list.'), true); return; }
     setText(await file.text());
   };
   return (
-    <Modal title="Import tasks from Excel or CSV" okLabel="Import" onSubmit={() => {
+    <Modal title={t('Import tasks from Excel or CSV')} okLabel={t('Import')} onSubmit={() => {
       if (!ok) return false;
-      loadProject(ok.project, 'Imported ' + ok.tasks + ' task' + (ok.tasks > 1 ? 's' : '') + (ok.warnings.length ? '. ' + ok.warnings.join('; ') + '.' : ''));
+      loadProject(ok.project, t(ok.tasks > 1 ? 'Imported {count} tasks' : 'Imported {count} task', { count: ok.tasks }) + (ok.warnings.length ? '. ' + ok.warnings.join('; ') + '.' : ''));
     }}>
-      <p>Copy the task list in Excel or Google Sheets and paste it below, or choose a CSV file. Columns are matched by their headings: Task Name, Duration, Predecessors, Resources, Level or WBS, % Complete and Notes. Without headings, the columns are read as task name, duration and predecessors.</p>
-      <textarea className="inp mono" id="import-text" rows={9} value={text} onChange={e => setText(e.target.value)} aria-label="Task list"
+      <p>{t('Copy the task list in Excel or Google Sheets and paste it below, or choose a CSV file. Columns are matched by their headings: Task Name, Duration, Predecessors, Resources, Level or WBS, % Complete and Notes. Without headings, the columns are read as task name, duration and predecessors.')}</p>
+      <textarea className="inp mono" id="import-text" rows={9} value={text} onChange={e => setText(e.target.value)} aria-label={t('Task list')}
         placeholder={['Task Name, Duration, Predecessors', 'Design, 5', 'Build, 10, 1', 'Launch, 0, 2'].join('\n')} />
       <div className="row-actions">
-        <button type="button" className="btn" onClick={() => fileRef.current?.click()}><Icon name="upload" />Choose CSV file…</button>
+        <button type="button" className="btn" onClick={() => fileRef.current?.click()}><Icon name="upload" />{t('Choose CSV file…')}</button>
         <input ref={fileRef} type="file" accept=".csv,.tsv,.txt,text/csv" hidden onChange={e => pickFile(e.target.files?.[0])} />
       </div>
-      {ok && <p className="muted">Found {ok.tasks} task{ok.tasks > 1 ? 's' : ''} and {ok.resources} resource{ok.resources === 1 ? '' : 's'}. Importing replaces the current plan, which you can bring back from File › Open › Restore Previous Project.</p>}
+      {ok && <p className="muted">{t('Found {tasks} task(s) and {resources} resource(s). Importing replaces the current plan, which you can bring back from File › Open › Restore Previous Project.', { tasks: ok.tasks, resources: ok.resources })}</p>}
       {ok && ok.warnings.length > 0 && <p className="alert warn inline">{ok.warnings.join('; ')}.</p>}
       {result && 'error' in result && <p className="alert inline">{result.error}</p>}
     </Modal>
@@ -269,18 +270,18 @@ function ShareDialog() {
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { shareUrl(S().p).then(setUrl, (e: Error) => setError(e.message)); }, []);
   const copy = async () => {
-    try { await navigator.clipboard.writeText(url); S().toast('Share link copied'); }
-    catch { inputRef.current?.select(); S().toast('Press Ctrl+C to copy the selected link.'); }
+    try { await navigator.clipboard.writeText(url); S().toast(t('Share link copied')); }
+    catch { inputRef.current?.select(); S().toast(t('Press Ctrl+C to copy the selected link.')); }
   };
   return (
-    <Modal title="Share a copy of this plan" cancelLabel="Close" noOk>
-      <p>Anyone who opens this link gets their own copy of the plan in their browser. Their changes don't affect yours. The plan travels inside the link and is never uploaded.</p>
+    <Modal title={t('Share a copy of this plan')} cancelLabel={t('Close')} noOk>
+      <p>{t('Anyone who opens this link gets their own copy of the plan in their browser. Their changes don’t affect yours. The plan travels inside the link and is never uploaded.')}</p>
       <div className="share-row">
-        <input ref={inputRef} className="inp" id="share-url" readOnly value={url || 'Creating link…'} aria-label="Share link" onFocus={e => e.target.select()} />
-        <button type="button" className="btn primary" disabled={!url} onClick={copy}><Icon name="link" />Copy link</button>
+        <input ref={inputRef} className="inp" id="share-url" readOnly value={url || t('Creating link…')} aria-label={t('Share link')} onFocus={e => e.target.select()} />
+        <button type="button" className="btn primary" disabled={!url} onClick={copy}><Icon name="link" />{t('Copy link')}</button>
       </div>
-      {url && <p className="muted small">Link length: {Math.ceil(url.length / 1024)} KB.{url.length > 8000 ? ' Some chat and email apps cut off long links; if it does not open, send the .openplan file instead.' : ''}</p>}
-      {error && <p className="alert inline">Could not create the link: {error}</p>}
+      {url && <p className="muted small">{t('Link length: {kb} KB.', { kb: Math.ceil(url.length / 1024) })}{url.length > 8000 ? ' ' + t('Some chat and email apps cut off long links; if it does not open, send the .openplan file instead.') : ''}</p>}
+      {error && <p className="alert inline">{t('Could not create the link: {error}', { error })}</p>}
     </Modal>
   );
 }
@@ -295,14 +296,14 @@ function ConfirmDialog({ title, message, okLabel, onOk }: { title: string; messa
 
 function TaskDialog({ uid }: { uid: number }) {
   const st = useStore();
-  const t = st.p.tasks.find(x => x.uid === uid);
-  const r = t ? st.s.rows.find((x: Row) => x.task.uid === t.uid) : undefined;
-  if (!t || !r) return null;
+  const task = st.p.tasks.find(x => x.uid === uid);
+  const r = task ? st.s.rows.find((x: Row) => x.task.uid === task.uid) : undefined;
+  if (!task || !r) return null;
   // Edits commit immediately through the store, exactly like the side drawer.
   // onSubmit returns false so an accidental form submit (Enter) cannot close the dialog.
   return (
-    <Modal title={'Task ' + r.id + ' · WBS ' + r.wbs} cancelLabel="Close" noOk backdropClose onSubmit={() => false}>
-      <TaskEditor st={st} t={t} r={r} />
+    <Modal title={t('Task {id} · WBS {wbs}', { id: r.id, wbs: r.wbs })} cancelLabel={t('Close')} noOk backdropClose onSubmit={() => false}>
+      <TaskEditor st={st} t={task} r={r} />
     </Modal>
   );
 }
@@ -336,7 +337,7 @@ function BatchEditDialog({ uids }: { uids: number[] }) {
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const set = (k: string, v: string) => { setF(o => ({ ...o, [k]: v })); setTouched(o => ({ ...o, [k]: true })); };
   // Fields the tasks disagree on start empty with a "(multiple values)" placeholder.
-  const ph = (k: keyof typeof init) => (init[k] == null ? MULTI : '');
+  const ph = (k: keyof typeof init) => (init[k] == null ? t(MULTI) : '');
 
   const save = () => {
     let changed = 0, skipped = 0, invalid = false;
@@ -373,49 +374,47 @@ function BatchEditDialog({ uids }: { uids: number[] }) {
         if (touched.notes) { x.notes = f.notes; changed++; }
       });
     });
-    if (invalid) { st.toast('Some values were invalid and not applied.', true); return false; }
-    st.toast(`Updated ${tasks.length} task(s)` + (skipped ? ` · ${skipped} summary field(s) skipped` : ''));
+    if (invalid) { st.toast(t('Some values were invalid and not applied.'), true); return false; }
+    st.toast(t('Updated {count} task(s)', { count: tasks.length }) + (skipped ? ' · ' + t('{count} summary field(s) skipped', { count: skipped }) : ''));
   };
 
   const num = (k: keyof typeof init, extra: any) =>
     <input className="inp" type="number" value={f[k]} placeholder={ph(k)} onChange={e => set(k, e.target.value)} {...extra} />;
 
   return (
-    <Modal title={`Edit ${tasks.length} tasks`} okLabel="Apply to all" onSubmit={save}>
-      <p className="muted">Only fields you change are applied to every selected task in one undoable step.
-        Fields the tasks disagree on show <em>{MULTI}</em>; typing a value overwrites all of them.
-        Start / finish set scheduling constraints (start-no-earlier-than / finish-no-later-than).</p>
+    <Modal title={t('Edit {count} tasks', { count: tasks.length })} okLabel={t('Apply to all')} onSubmit={save}>
+      <p className="muted">{t('Only fields you change are applied to every selected task in one undoable step. Fields the tasks disagree on show')} <em>{t(MULTI)}</em>{t('; typing a value overwrites all of them. Start / finish set scheduling constraints (start-no-earlier-than / finish-no-later-than).')}</p>
       <div className="row3">
-        <label className="field"><span>Duration</span>
+        <label className="field"><span>{t('Duration')}</span>
           <input className="inp" value={f.duration} placeholder={ph('duration')} onChange={e => set('duration', e.target.value)} /></label>
-        <label className="field"><span>Start</span>
+        <label className="field"><span>{t('Start')}</span>
           <input className="inp" type="date" value={f.start} onChange={e => set('start', e.target.value)} /></label>
-        <label className="field"><span>Finish</span>
+        <label className="field"><span>{t('Finish')}</span>
           <input className="inp" type="date" value={f.finish} onChange={e => set('finish', e.target.value)} /></label>
       </div>
       <div className="row3">
-        <label className="field"><span>% complete</span>{num('percent', { min: 0, max: 100, step: 5 })}</label>
-        <label className="field"><span>Priority (0–1000)</span>{num('priority', { min: 0, max: 1000, step: 50 })}</label>
-        <label className="field"><span>Task type</span>
+        <label className="field"><span>{t('% complete')}</span>{num('percent', { min: 0, max: 100, step: 5 })}</label>
+        <label className="field"><span>{t('Priority (0–1000)')}</span>{num('priority', { min: 0, max: 1000, step: 50 })}</label>
+        <label className="field"><span>{t('Task type')}</span>
           <select className="sel" value={f.type} onChange={e => set('type', e.target.value)}>
-            <option value="">{ph('type') || 'Fixed units'}</option>
-            {Object.entries(M.TASK_TYPES).map(([k, v]) => <option key={k} value={k}>{String(v)}</option>)}
+            <option value="">{ph('type') || t('Fixed units')}</option>
+            {Object.entries(M.TASK_TYPES).map(([k, v]) => <option key={k} value={k}>{t(String(v))}</option>)}
           </select></label>
       </div>
       <div className="row3">
-        <label className="field"><span>Milestone</span>
+        <label className="field"><span>{t('Milestone')}</span>
           <select className="sel" value={touched.milestone ? f.milestone : ''} onChange={e => set('milestone', e.target.value)}>
-            <option value="">{ph('milestone') || 'no'}</option>
-            <option value="yes">Yes</option>
-            <option value="no">No</option>
+            <option value="">{ph('milestone') || t('no')}</option>
+            <option value="yes">{t('Yes')}</option>
+            <option value="no">{t('No')}</option>
           </select></label>
-        <label className="field"><span>Resource</span>
+        <label className="field"><span>{t('Resource')}</span>
           <select className="sel" value={f.res} onChange={e => set('res', e.target.value)}>
-            <option value="">Leave unchanged</option>
-            <option value="__clear__">Remove all assignments</option>
-            {st.p.resources.map(r => <option key={r.uid} value={String(r.uid)}>Assign: {r.name || '(unnamed)'}</option>)}
+            <option value="">{t('Leave unchanged')}</option>
+            <option value="__clear__">{t('Remove all assignments')}</option>
+            {st.p.resources.map(r => <option key={r.uid} value={String(r.uid)}>{t('Assign: {name}', { name: r.name || t('(unnamed)') })}</option>)}
           </select></label>
-        <label className="field"><span>Notes</span>
+        <label className="field"><span>{t('Notes')}</span>
           <input className="inp" value={f.notes} placeholder={ph('notes')} onChange={e => set('notes', e.target.value)} /></label>
       </div>
     </Modal>
@@ -438,11 +437,11 @@ function WbsBoxDialog() {
   const [rows, setRows] = useState<string[]>(st.wbsBox);
   const toggle = (k: string) => setRows(r => (r.includes(k) ? r.filter(x => x !== k) : [...r, k]));
   return (
-    <Modal title="WBS box content" okLabel="Apply" onSubmit={() => { st.setUI({ wbsBox: rows }); }}>
-      <p className="muted">Choose which info lines each WBS box shows below the task name. The name is always shown.</p>
+    <Modal title={t('WBS box content')} okLabel={t('Apply')} onSubmit={() => { st.setUI({ wbsBox: rows }); }}>
+      <p className="muted">{t('Choose which info lines each WBS box shows below the task name. The name is always shown.')}</p>
       <div className="chk-list">
         {WBS_BOX_ROWS.map(r => (
-          <label key={r.key} className="chk"><input type="checkbox" checked={rows.includes(r.key)} onChange={() => toggle(r.key)} />{r.label}</label>
+          <label key={r.key} className="chk"><input type="checkbox" checked={rows.includes(r.key)} onChange={() => toggle(r.key)} />{t(r.label)}</label>
         ))}
       </div>
     </Modal>
@@ -462,55 +461,55 @@ function CalendarDialog() {
   const toggleDay = (d: number) => setDays(ds => (ds.includes(d) ? ds.filter(x => x !== d) : ds.concat([d]).sort((a, b) => a - b)));
   const hours = times.reduce((s, w) => s + Math.max(0, (+w.end.slice(0, 2) * 60 + +w.end.slice(3)) - (+w.start.slice(0, 2) * 60 + +w.start.slice(3))) / 60, 0);
   return (
-    <Modal title="Change working time" okLabel="Apply" onSubmit={() => {
-      if (!days.length) { st.toast('The calendar needs at least one working day', true); return false; }
-      if (!times.length || times.some(w => !w.start || !w.end || w.end <= w.start)) { st.toast('Each work time range needs an end after its start', true); return false; }
-      if (excs.some(e => !e.date)) { st.toast('Exception dates cannot be empty', true); return false; }
+    <Modal title={t('Change working time')} okLabel={t('Apply')} onSubmit={() => {
+      if (!days.length) { st.toast(t('The calendar needs at least one working day'), true); return false; }
+      if (!times.length || times.some(w => !w.start || !w.end || w.end <= w.start)) { st.toast(t('Each work time range needs an end after its start'), true); return false; }
+      if (excs.some(e => !e.date)) { st.toast(t('Exception dates cannot be empty'), true); return false; }
       st.commit(pp => {
         pp.calendar = { workingDays: days, workTimes: times.map(w => ({ start: w.start, end: w.end })), exceptions: excs.map(e => ({ date: e.date, working: e.working, reason: e.reason })) };
       });
-      st.toast('Working time updated — schedule recalculated');
+      st.toast(t('Working time updated — schedule recalculated'));
     }}>
-      <p className="muted">Working days drive the schedule: durations count working days only, and the Gantt chart shades non-working days.</p>
-      <div className="field"><span>Working days</span>
+      <p className="muted">{t('Working days drive the schedule: durations count working days only, and the Gantt chart shades non-working days.')}</p>
+      <div className="field"><span>{t('Working days')}</span>
         <div className="chk-list cal-days">
-          {DAY_NAMES.map((n, d) => <label key={d} className="chk"><input type="checkbox" checked={days.includes(d)} onChange={() => toggleDay(d)} />{n}</label>)}
+          {DAY_NAMES.map((n, d) => <label key={d} className="chk"><input type="checkbox" checked={days.includes(d)} onChange={() => toggleDay(d)} />{t(n)}</label>)}
         </div>
       </div>
-      <div className="field"><span>Work times per working day ({hours.toFixed(1)} h/day)</span>
+      <div className="field"><span>{t('Work times per working day ({hours} h/day)', { hours: hours.toFixed(1) })}</span>
         <div className="mini-list">
           {times.map((w, i) => (
             <div className="mini-row" key={i}>
-              <input className="inp" type="time" aria-label="Start time" value={w.start}
+              <input className="inp" type="time" aria-label={t('Start time')} value={w.start}
                 onChange={e => setTimes(times.map((x, k) => (k === i ? { ...x, start: e.target.value } : x)))} />
-              <span className="muted">to</span>
-              <input className="inp" type="time" aria-label="End time" value={w.end}
+              <span className="muted">{t('to')}</span>
+              <input className="inp" type="time" aria-label={t('End time')} value={w.end}
                 onChange={e => setTimes(times.map((x, k) => (k === i ? { ...x, end: e.target.value } : x)))} />
-              <button type="button" className="icon-btn" aria-label="Remove time range" disabled={times.length <= 1}
+              <button type="button" className="icon-btn" aria-label={t('Remove time range')} disabled={times.length <= 1}
                 onClick={() => setTimes(times.filter((_, k) => k !== i))}><Icon name="x" /></button>
             </div>
           ))}
-          <button type="button" className="btn ghost" onClick={() => setTimes(times.concat([{ start: '18:00', end: '22:00' }]))}><Icon name="plus" />Add time range</button>
+          <button type="button" className="btn ghost" onClick={() => setTimes(times.concat([{ start: '18:00', end: '22:00' }]))}><Icon name="plus" />{t('Add time range')}</button>
         </div>
       </div>
-      <div className="field"><span>Exceptions (holidays and make-up work days)</span>
+      <div className="field"><span>{t('Exceptions (holidays and make-up work days)')}</span>
         <div className="mini-list">
           {excs.map((e, i) => (
             <div className="mini-row" key={i}>
-              <input className="inp" type="date" aria-label="Date" value={e.date}
+              <input className="inp" type="date" aria-label={t('Date')} value={e.date}
                 onChange={ev => setExcs(excs.map((x, k) => (k === i ? { ...x, date: ev.target.value } : x)))} />
-              <select className="sel" aria-label="Type" value={e.working ? 'work' : 'off'}
+              <select className="sel" aria-label={t('Type')} value={e.working ? 'work' : 'off'}
                 onChange={ev => setExcs(excs.map((x, k) => (k === i ? { ...x, working: ev.target.value === 'work' } : x)))}>
-                <option value="off">Non-working day</option>
-                <option value="work">Working day</option>
+                <option value="off">{t('Non-working day')}</option>
+                <option value="work">{t('Working day')}</option>
               </select>
-              <input className="inp" aria-label="Reason" placeholder="e.g. National Day" value={e.reason}
+              <input className="inp" aria-label={t('Reason')} placeholder={t('e.g. National Day')} value={e.reason}
                 onChange={ev => setExcs(excs.map((x, k) => (k === i ? { ...x, reason: ev.target.value } : x)))} />
-              <button type="button" className="icon-btn" aria-label="Remove exception"
+              <button type="button" className="icon-btn" aria-label={t('Remove exception')}
                 onClick={() => setExcs(excs.filter((_, k) => k !== i))}><Icon name="x" /></button>
             </div>
           ))}
-          <button type="button" className="btn ghost" onClick={() => setExcs(excs.concat([{ date: '', working: false, reason: '' }]))}><Icon name="plus" />Add exception</button>
+          <button type="button" className="btn ghost" onClick={() => setExcs(excs.concat([{ date: '', working: false, reason: '' }]))}><Icon name="plus" />{t('Add exception')}</button>
         </div>
       </div>
     </Modal>
@@ -552,24 +551,24 @@ const opsOf = (key: string) => BS_OPS[fieldOf(key).kind];
 function valueLabel(c: BoxCondition, p: { resources: Resource[] }): string {
   const f = fieldOf(c.field);
   switch (f.kind) {
-    case 'bool': return c.value ? 'yes' : 'no';
+    case 'bool': return c.value ? t('yes') : t('no');
     case 'res': {
       const r = p.resources.find(x => x.uid === c.value);
       return r ? r.name : String(c.value ?? '');
     }
-    case 'type': return { FixedUnits: 'Fixed units', FixedWork: 'Fixed work', FixedDuration: 'Fixed duration' }[String(c.value)] || String(c.value ?? '');
+    case 'type': return { FixedUnits: t('Fixed units'), FixedWork: t('Fixed work'), FixedDuration: t('Fixed duration') }[String(c.value)] || String(c.value ?? '');
     case 'constraint': return String(c.value || 'ASAP');
     default: return String(c.value ?? '');
   }
 }
 
 function condSummary(rule: BoxRule, p: { resources: Resource[] }): string {
-  if (!rule.conditions.length) return 'All tasks';
+  if (!rule.conditions.length) return t('All tasks');
   return rule.conditions.map(c => {
     const op = (opsOf(c.field) || []).find(o => o.key === c.op);
     const label = op ? op.label : c.op;
-    return op?.noValue ? `${fieldOf(c.field).label} ${label}` : `${fieldOf(c.field).label} ${label} ${valueLabel(c, p)}`;
-  }).join(' and ');
+    return op?.noValue ? `${t(fieldOf(c.field).label)} ${t(label)}` : `${t(fieldOf(c.field).label)} ${t(label)} ${valueLabel(c, p)}`;
+  }).join(t(' and '));
 }
 
 function previewStyle(st: BoxStyle): CSSProperties {
@@ -584,10 +583,10 @@ function previewStyle(st: BoxStyle): CSSProperties {
 
 function ColorPicker({ value, onChange, allowTransparent }: { value: string; onChange: (v: string) => void; allowTransparent?: boolean }) {
   return <div className="swatches">
-    <button type="button" className={'sw none' + (!value ? ' on' : '')} title="Not set (fall through to other rules)" aria-label="No color" onClick={() => onChange('')} />
-    {allowTransparent && <button type="button" className={'sw trans' + (value === 'transparent' ? ' on' : '')} title="Transparent fill" aria-label="Transparent" onClick={() => onChange('transparent')} />}
+    <button type="button" className={'sw none' + (!value ? ' on' : '')} title={t('Not set (fall through to other rules)')} aria-label={t('No color')} onClick={() => onChange('')} />
+    {allowTransparent && <button type="button" className={'sw trans' + (value === 'transparent' ? ' on' : '')} title={t('Transparent fill')} aria-label={t('Transparent')} onClick={() => onChange('transparent')} />}
     {BS_PALETTE.map(c => <button type="button" key={c} className={'sw' + (value === c ? ' on' : '')} style={{ background: c }} aria-label={c} onClick={() => onChange(c)} />)}
-    <input className="inp hex" value={value} placeholder="#hex" aria-label="Custom hex color" onChange={e => onChange(e.target.value.trim())} />
+    <input className="inp hex" value={value} placeholder="#hex" aria-label={t('Custom hex color')} onChange={e => onChange(e.target.value.trim())} />
   </div>;
 }
 
@@ -602,22 +601,22 @@ function CondRow({ c, onChange, onRemove }: { c: BoxCondition; onChange: (c: Box
   };
   return <div className="cond-row">
     <select className="sel" value={c.field} onChange={e => setField(e.target.value)}>
-      {BS_FIELDS.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
+      {BS_FIELDS.map(x => <option key={x.key} value={x.key}>{t(x.label)}</option>)}
     </select>
     <select className="sel" value={op.key} onChange={e => onChange({ ...c, op: e.target.value })}>
-      {list.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+      {list.map(o => <option key={o.key} value={o.key}>{t(o.label)}</option>)}
     </select>
     {!op.noValue && (f.kind === 'bool' ? <select className="sel" value={c.value ? 'true' : 'false'} onChange={e => onChange({ ...c, value: e.target.value === 'true' })}>
-        <option value="true">yes</option><option value="false">no</option>
+        <option value="true">{t('yes')}</option><option value="false">{t('no')}</option>
       </select> : f.kind === 'res' ? <select className="sel" value={String(c.value)} onChange={e => onChange({ ...c, value: +e.target.value })}>
         {st.p.resources.map(r => <option key={r.uid} value={String(r.uid)}>{r.name || r.initials || r.uid}</option>)}
       </select> : f.kind === 'type' ? <select className="sel" value={String(c.value)} onChange={e => onChange({ ...c, value: e.target.value })}>
-        <option value="FixedUnits">Fixed units</option><option value="FixedWork">Fixed work</option><option value="FixedDuration">Fixed duration</option>
+        <option value="FixedUnits">{t('Fixed units')}</option><option value="FixedWork">{t('Fixed work')}</option><option value="FixedDuration">{t('Fixed duration')}</option>
       </select> : f.kind === 'constraint' ? <select className="sel" value={String(c.value)} onChange={e => onChange({ ...c, value: e.target.value })}>
         {['ASAP', 'ALAP', 'SNET', 'SNLT', 'FNET', 'FNLT', 'MSO', 'MFO'].map(k => <option key={k} value={k}>{k}</option>)}
       </select> : f.kind === 'num' ? <input className="inp" type="number" value={Number(c.value) || 0} onChange={e => onChange({ ...c, value: +e.target.value })} /> :
         <input className="inp" value={String(c.value ?? '')} onChange={e => onChange({ ...c, value: e.target.value })} />)}
-    <button type="button" className="icon-btn" aria-label="Remove condition" onClick={onRemove}><Icon name="x" /></button>
+    <button type="button" className="icon-btn" aria-label={t('Remove condition')} onClick={onRemove}><Icon name="x" /></button>
   </div>;
 }
 
@@ -635,60 +634,60 @@ function RuleEditor({ rule, onSave, onClose }: { rule: BoxRule; onSave: (r: BoxR
   const patchStyle = (p: Partial<BoxStyle>) => setDraft(d => ({ ...d, style: { ...d.style, ...p } }));
   const toggleView = (v: 'wbs' | 'network') => patch({ views: draft.views.includes(v) ? draft.views.filter(x => x !== v) : [...draft.views, v] });
   return (
-    <Modal title={rule.builtin ? 'Built-in rule (read only)' : (rule.name || 'Rule')} okLabel="Save rule" noOk={rule.builtin} cancelLabel={rule.builtin ? 'Close' : 'Cancel'} onClose={onClose} onSubmit={() => { onSave(draft); }}>
-      {rule.builtin && <p className="muted">Built-in rules cannot be edited. Duplicate one to tweak it, or disable it here:</p>}
-      {rule.builtin && <label className="toggle"><input type="checkbox" checked={draft.enabled} onChange={e => { patch({ enabled: e.target.checked }); onSave({ ...draft, enabled: e.target.checked }); }} />Enabled</label>}
+    <Modal title={rule.builtin ? t('Built-in rule (read only)') : (rule.name || t('Rule'))} okLabel={t('Save rule')} noOk={rule.builtin} cancelLabel={rule.builtin ? t('Close') : t('Cancel')} onClose={onClose} onSubmit={() => { onSave(draft); }}>
+      {rule.builtin && <p className="muted">{t('Built-in rules cannot be edited. Duplicate one to tweak it, or disable it here:')}</p>}
+      {rule.builtin && <label className="toggle"><input type="checkbox" checked={draft.enabled} onChange={e => { patch({ enabled: e.target.checked }); onSave({ ...draft, enabled: e.target.checked }); }} />{t('Enabled')}</label>}
       {!rule.builtin && <>
-        <F label="Rule name" name="rname" value={draft.name} onChange={(e: any) => patch({ name: e.target.value })} />
+        <F label={t('Rule name')} name="rname" value={draft.name} onChange={(e: any) => patch({ name: e.target.value })} />
         <div className="row2">
-          <label className="field"><span>Apply to</span>
-            <label className="toggle"><input type="checkbox" checked={draft.views.includes('wbs')} onChange={() => toggleView('wbs')} />WBS chart</label>
-            <label className="toggle"><input type="checkbox" checked={draft.views.includes('network')} onChange={() => toggleView('network')} />Network diagram</label>
+          <label className="field"><span>{t('Apply to')}</span>
+            <label className="toggle"><input type="checkbox" checked={draft.views.includes('wbs')} onChange={() => toggleView('wbs')} />{t('WBS chart')}</label>
+            <label className="toggle"><input type="checkbox" checked={draft.views.includes('network')} onChange={() => toggleView('network')} />{t('Network diagram')}</label>
           </label>
-          <label className="field"><span>Scope</span>
+          <label className="field"><span>{t('Scope')}</span>
             <select className="sel" value={draft.scope} onChange={e => patch({ scope: e.target.value as BoxRule['scope'] })}>
-              <option value="partial">Partial — only the attributes set below</option>
-              <option value="full">Full — override everything set below</option>
+              <option value="partial">{t('Partial — only the attributes set below')}</option>
+              <option value="full">{t('Full — override everything set below')}</option>
             </select>
           </label>
         </div>
-        <p className="muted">Partial rules merge attribute by attribute (several can apply at once); a full rule replaces the merged result wholesale. Evaluation order = list order.</p>
-        <div className="field"><span>Conditions (combined with AND)</span>
+        <p className="muted">{t('Partial rules merge attribute by attribute (several can apply at once); a full rule replaces the merged result wholesale. Evaluation order = list order.')}</p>
+        <div className="field"><span>{t('Conditions (combined with AND)')}</span>
           <div className="mini-list">
             {draft.conditions.map((c, k) => <CondRow key={k} c={c} onChange={nc => patch({ conditions: draft.conditions.map((x, i) => i === k ? nc : x) })} onRemove={() => patch({ conditions: draft.conditions.filter((_, i) => i !== k) })} />)}
-            <button type="button" className="btn ghost" onClick={() => patch({ conditions: draft.conditions.concat([{ field: 'percentComplete', op: 'gte', value: 50 }]) })}><Icon name="plus" />Add condition</button>
+            <button type="button" className="btn ghost" onClick={() => patch({ conditions: draft.conditions.concat([{ field: 'percentComplete', op: 'gte', value: 50 }]) })}><Icon name="plus" />{t('Add condition')}</button>
           </div>
         </div>
-        <div className="field"><span>Border color</span>
+        <div className="field"><span>{t('Border color')}</span>
           <ColorPicker value={draft.style.borderColor || ''} onChange={v => patchStyle(v ? { borderColor: v } : { borderColor: undefined, borderWidth: undefined, borderDash: undefined })} />
         </div>
         <div className="row3">
-          <label className="field"><span>Border width</span>
+          <label className="field"><span>{t('Border width')}</span>
             <select className="sel" value={draft.style.borderWidth || ''} onChange={e => patchStyle({ borderWidth: e.target.value ? +e.target.value as 1 | 2 | 3 : undefined })}>
-              <option value="">Not set</option><option value="1">1 px</option><option value="2">2 px</option><option value="3">3 px</option>
+              <option value="">{t('Not set')}</option><option value="1">1 px</option><option value="2">2 px</option><option value="3">3 px</option>
             </select>
           </label>
-          <label className="field"><span>Line style</span>
+          <label className="field"><span>{t('Line style')}</span>
             <select className="sel" value={draft.style.borderDash || ''} onChange={e => patchStyle({ borderDash: e.target.value as BoxStyle['borderDash'] })}>
-              <option value="">Not set</option><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option>
+              <option value="">{t('Not set')}</option><option value="solid">{t('Solid')}</option><option value="dashed">{t('Dashed')}</option><option value="dotted">{t('Dotted')}</option>
             </select>
           </label>
-          <label className="field"><span>Bold text</span>
-            <label className="toggle"><input type="checkbox" checked={!!draft.style.bold} onChange={e => patchStyle({ bold: e.target.checked || undefined })} />Bold</label>
+          <label className="field"><span>{t('Bold text')}</span>
+            <label className="toggle"><input type="checkbox" checked={!!draft.style.bold} onChange={e => patchStyle({ bold: e.target.checked || undefined })} />{t('Bold')}</label>
           </label>
         </div>
-        <div className="field"><span>Fill color</span>
+        <div className="field"><span>{t('Fill color')}</span>
           <ColorPicker value={draft.style.fillColor || ''} allowTransparent onChange={v => patchStyle({ fillColor: v || undefined })} />
         </div>
-        <div className="field"><span>Text color</span>
+        <div className="field"><span>{t('Text color')}</span>
           <ColorPicker value={draft.style.textColor || ''} onChange={v => patchStyle({ textColor: v || undefined })} />
         </div>
-        <div className="field"><span>Shadow color (empty = no shadow)</span>
+        <div className="field"><span>{t('Shadow color (empty = no shadow)')}</span>
           <ColorPicker value={draft.style.shadowColor || ''} onChange={v => patchStyle({ shadowColor: v || undefined, shadowX: v ? (draft.style.shadowX ?? 3) : undefined, shadowY: v ? (draft.style.shadowY ?? 3) : undefined })} />
         </div>
         <div className="row2">
-          <F label="Shadow offset X (-4..4)" name="shx" type="number" min={-4} max={4} value={draft.style.shadowX ?? 3} onChange={(e: any) => patchStyle({ shadowX: Math.max(-4, Math.min(4, +e.target.value || 0)) })} />
-          <F label="Shadow offset Y (-4..4)" name="shy" type="number" min={-4} max={4} value={draft.style.shadowY ?? 3} onChange={(e: any) => patchStyle({ shadowY: Math.max(-4, Math.min(4, +e.target.value || 0)) })} />
+          <F label={t('Shadow offset X (-4..4)')} name="shx" type="number" min={-4} max={4} value={draft.style.shadowX ?? 3} onChange={(e: any) => patchStyle({ shadowX: Math.max(-4, Math.min(4, +e.target.value || 0)) })} />
+          <F label={t('Shadow offset Y (-4..4)')} name="shy" type="number" min={-4} max={4} value={draft.style.shadowY ?? 3} onChange={(e: any) => patchStyle({ shadowY: Math.max(-4, Math.min(4, +e.target.value || 0)) })} />
         </div>
       </>}
     </Modal>
@@ -710,26 +709,26 @@ function BoxStylesDialog() {
     commit(rs => { const t = rs[i]; rs[i] = rs[j]; rs[j] = t; });
   };
   return (
-    <Modal title="Box style rules" okLabel="Done" onSubmit={() => { }} backdropClose>
-      <p className="muted">Rules restyle WBS and network boxes. They are evaluated top to bottom: matching <b>partial</b> rules merge attribute by attribute, then the first matching <b>full</b> rule overrides the result. A per-task custom color beats every rule.</p>
+    <Modal title={t('Box style rules')} okLabel={t('Done')} onSubmit={() => { }} backdropClose>
+      <p className="muted">{t('Rules restyle WBS and network boxes. They are evaluated top to bottom: matching')} <b>{t('partial')}</b> {t('rules merge attribute by attribute, then the first matching')} <b>{t('full')}</b> {t('rule overrides the result. A per-task custom color beats every rule.')}</p>
       <div className="rule-list">
         {rules.map((r, i) => <div className="rule-row" key={r.id}>
-          <input type="checkbox" aria-label={'Enable ' + r.name} checked={r.enabled} onChange={() => commit(rs => { rs[i].enabled = !rs[i].enabled; })} />
+          <input type="checkbox" aria-label={t('Enable {name}', { name: r.name })} checked={r.enabled} onChange={() => commit(rs => { rs[i].enabled = !rs[i].enabled; })} />
           <div className="rule-main">
-            <span className="rule-name">{r.name}{r.builtin && <span className="rule-badge">built-in</span>}<span className="rule-badge">{r.scope}</span><span className="rule-badge">{r.views.join(' + ')}</span></span>
+            <span className="rule-name">{r.name}{r.builtin && <span className="rule-badge">{t('built-in')}</span>}<span className="rule-badge">{t(r.scope)}</span><span className="rule-badge">{r.views.join(' + ')}</span></span>
             <span className="rule-cond">{condSummary(r, st.p)}</span>
           </div>
           <div className="rule-prev" style={previewStyle(r.style)}>Aa</div>
-          <button type="button" className="icon-btn" title="Move up" aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)}><Icon name="up" /></button>
-          <button type="button" className="icon-btn" title="Move down" aria-label="Move down" disabled={i === rules.length - 1} onClick={() => move(i, 1)}><Icon name="down" /></button>
-          <button type="button" className="icon-btn" title="Edit" aria-label="Edit" onClick={() => setEdit({ index: i, rule: r })}><Icon name="settings" /></button>
-          <button type="button" className="icon-btn" title="Duplicate" aria-label="Duplicate" onClick={() => commit(rs => { rs.splice(i + 1, 0, { ...r, id: 'r' + Date.now().toString(36), name: r.name + ' copy', builtin: false }); })}><Icon name="copy" /></button>
-          <button type="button" className="icon-btn" title={r.builtin ? 'Built-in rules cannot be deleted' : 'Delete'} aria-label="Delete" disabled={r.builtin} onClick={() => commit(rs => { rs.splice(i, 1); })}><Icon name="trash" /></button>
+          <button type="button" className="icon-btn" title={t('Move up')} aria-label={t('Move up')} disabled={i === 0} onClick={() => move(i, -1)}><Icon name="up" /></button>
+          <button type="button" className="icon-btn" title={t('Move down')} aria-label={t('Move down')} disabled={i === rules.length - 1} onClick={() => move(i, 1)}><Icon name="down" /></button>
+          <button type="button" className="icon-btn" title={t('Edit')} aria-label={t('Edit')} onClick={() => setEdit({ index: i, rule: r })}><Icon name="settings" /></button>
+          <button type="button" className="icon-btn" title={t('Duplicate')} aria-label={t('Duplicate')} onClick={() => commit(rs => { rs.splice(i + 1, 0, { ...r, id: 'r' + Date.now().toString(36), name: r.name + ' copy', builtin: false }); })}><Icon name="copy" /></button>
+          <button type="button" className="icon-btn" title={r.builtin ? t('Built-in rules cannot be deleted') : t('Delete')} aria-label={t('Delete')} disabled={r.builtin} onClick={() => commit(rs => { rs.splice(i, 1); })}><Icon name="trash" /></button>
         </div>)}
       </div>
       <div className="dlg-foot" style={{ justifyContent: 'flex-start', paddingLeft: 0, paddingRight: 0 }}>
-        <button type="button" className="btn" disabled={rules.length >= BS_MAX} onClick={() => setEdit({ index: -1, rule: newRuleDraft() })}><Icon name="plus" />New rule</button>
-        <span className="muted">{rules.length} / {BS_MAX} rules</span>
+        <button type="button" className="btn" disabled={rules.length >= BS_MAX} onClick={() => setEdit({ index: -1, rule: newRuleDraft() })}><Icon name="plus" />{t('New rule')}</button>
+        <span className="muted">{t('{count} / {max} rules', { count: rules.length, max: BS_MAX })}</span>
       </div>
       {edit && <RuleEditor rule={edit.rule}
         onClose={() => setEdit(null)}
@@ -743,14 +742,14 @@ function BoxStylesDialog() {
 
 function BoxColorDialog({ uids }: { uids: number[] }) {
   const st = useStore();
-  const t = st.p.tasks.find(x => x.uid === uids[0]);
-  const [color, setColor] = useState(t?.customStyle?.fillColor || '');
+  const task = st.p.tasks.find(x => x.uid === uids[0]);
+  const [color, setColor] = useState(task?.customStyle?.fillColor || '');
   return (
-    <Modal title={'Custom box color — ' + (uids.length > 1 ? uids.length + ' tasks' : (t?.name || 'task'))} okLabel="Apply" onSubmit={() => { ops.setCustomStyle(uids, color ? { fillColor: color } : null); }}>
-      <div className="field"><span>Fill color (overrides all rules)</span>
+    <Modal title={t('Custom box color — {name}', { name: uids.length > 1 ? t('{count} tasks', { count: uids.length }) : (task?.name || t('task')) })} okLabel={t('Apply')} onSubmit={() => { ops.setCustomStyle(uids, color ? { fillColor: color } : null); }}>
+      <div className="field"><span>{t('Fill color (overrides all rules)')}</span>
         <ColorPicker value={color} allowTransparent onChange={setColor} />
       </div>
-      <p className="muted">Leave the color empty to clear the custom style and go back to rule-driven styling.</p>
+      <p className="muted">{t('Leave the color empty to clear the custom style and go back to rule-driven styling.')}</p>
     </Modal>
   );
 }
@@ -768,9 +767,9 @@ function SlotEditor({ label, slots, onChange }: { label: string; slots: [PrintSl
           next[i] = { ...s, type: e.target.value as PrintSlot['type'] };
           onChange(next);
         }}>
-          {SLOT_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          {SLOT_TYPES.map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}
         </select>
-        {s.type === 'custom' && <input className="inp" placeholder="Text" value={s.text} onChange={e => {
+        {s.type === 'custom' && <input className="inp" placeholder={t('Text')} value={s.text} onChange={e => {
           const next = [...slots] as [PrintSlot, PrintSlot, PrintSlot];
           next[i] = { ...s, text: e.target.value };
           onChange(next);
@@ -785,25 +784,25 @@ function PrintDialog() {
   const [cfg, setCfg] = useState<PrintConfig>(JSON.parse(JSON.stringify(st.printCfg)));
   const upd = (patch: Partial<PrintConfig>) => setCfg(c => ({ ...c, ...patch }));
   return (
-    <Modal title={'Print ' + VIEW_NAMES[st.view]} okLabel="Print" onClose={() => S().closeDialog()} onSubmit={() => {
+    <Modal title={t('Print {view}', { view: viewName(st.view) })} okLabel={t('Print')} onClose={() => S().closeDialog()} onSubmit={() => {
       st.setUI({ printCfg: cfg });
       printView(st, cfg);
     }}>
       <div className="two">
-        <label className="field"><span>Paper</span>
+        <label className="field"><span>{t('Paper')}</span>
           <select className="inp" value={cfg.paper} onChange={e => upd({ paper: e.target.value as PrintConfig['paper'] })}>
-            <option value="a4">A4</option><option value="a3">A3</option><option value="letter">Letter</option>
+            <option value="a4">A4</option><option value="a3">A3</option><option value="letter">{t('Letter')}</option>
           </select>
         </label>
-        <label className="field"><span>Orientation</span>
+        <label className="field"><span>{t('Orientation')}</span>
           <select className="inp" value={cfg.orient} onChange={e => upd({ orient: e.target.value as PrintConfig['orient'] })}>
-            <option value="landscape">Landscape</option><option value="portrait">Portrait</option>
+            <option value="landscape">{t('Landscape')}</option><option value="portrait">{t('Portrait')}</option>
           </select>
         </label>
       </div>
-      <SlotEditor label="Header (left / center / right)" slots={cfg.header} onChange={header => upd({ header })} />
-      <SlotEditor label="Footer (left / center / right)" slots={cfg.footer} onChange={footer => upd({ footer })} />
-      <p className="muted">The chart is scaled to fit the page width and split into pages between node rows, so no box is cut across pages. The browser's print preview shows the pages.</p>
+      <SlotEditor label={t('Header (left / center / right)')} slots={cfg.header} onChange={header => upd({ header })} />
+      <SlotEditor label={t('Footer (left / center / right)')} slots={cfg.footer} onChange={footer => upd({ footer })} />
+      <p className="muted">{t('The chart is scaled to fit the page width and split into pages between node rows, so no box is cut across pages. The browser’s print preview shows the pages.')}</p>
     </Modal>
   );
 }
@@ -815,23 +814,23 @@ function WbsDocDialog() {
   const [template, setTemplate] = useState<'compact' | 'full'>('full');
   const [scope, setScope] = useState<'all' | 'leaves' | 'critical'>('all');
   return (
-    <Modal title="Export WBS dictionary to Word" okLabel="Download" onClose={() => S().closeDialog()} onSubmit={() => {
+    <Modal title={t('Export WBS dictionary to Word')} okLabel={t('Download')} onClose={() => S().closeDialog()} onSubmit={() => {
       U.download(U.slug(st.p.name) + '-wbs-dictionary.doc', toWbsDictionaryDoc(st.p, { template, scope }), 'application/msword');
-      st.toast('Word document downloaded');
+      st.toast(t('Word document downloaded'));
     }}>
       <div className="two">
-        <label className="field"><span>Template</span>
+        <label className="field"><span>{t('Template')}</span>
           <select className="inp" value={template} onChange={e => setTemplate(e.target.value as 'compact' | 'full')}>
-            <option value="full">Full (all fields)</option><option value="compact">Compact (name + duration + notes)</option>
+            <option value="full">{t('Full (all fields)')}</option><option value="compact">{t('Compact (name + duration + notes)')}</option>
           </select>
         </label>
-        <label className="field"><span>Tasks</span>
+        <label className="field"><span>{t('Tasks')}</span>
           <select className="inp" value={scope} onChange={e => setScope(e.target.value as 'all' | 'leaves' | 'critical')}>
-            <option value="all">All tasks</option><option value="leaves">Leaf tasks only</option><option value="critical">Critical path only</option>
+            <option value="all">{t('All tasks')}</option><option value="leaves">{t('Leaf tasks only')}</option><option value="critical">{t('Critical path only')}</option>
           </select>
         </label>
       </div>
-      <p className="muted">A .doc file with a cover page, contents list, one section per task and a task list appendix. Word shows it with real heading styles, so you can insert an automatic table of contents there.</p>
+      <p className="muted">{t('A .doc file with a cover page, contents list, one section per task and a task list appendix. Word shows it with real heading styles, so you can insert an automatic table of contents there.')}</p>
     </Modal>
   );
 }

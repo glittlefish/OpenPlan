@@ -1,6 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState, type JSX, type MouseEvent as RMouseEvent } from 'react';
 import OP from '../core';
 import { useApp, S, ask, focusKey, rowByUid, type Store } from '../store';
+import { t } from '../i18n';
 import { activeCols, colDef, gridItems, menuData, type GroupItem } from '../lib/grid';
 import * as ops from '../lib/taskOps';
 import Field, { DateField } from '../components/Field';
@@ -53,13 +54,13 @@ function commitCell(k: string, uid: number, v: string): boolean | void {
   if (k === 'preds') return ops.setPreds(uid, v);
   if (k === 'duration') {
     const d = M.parseDuration(v, st.p.hoursPerDay);
-    if (d == null) { st.toast('Enter a duration like 5, 5d, 2w or 16h.', true); return false; }
+    if (d == null) { st.toast(t('Enter a duration like 5, 5d, 2w or 16h.'), true); return false; }
     edit((t, p) => { ops.setDuration(p, t, d); });
     return;
   }
   if (k === 'work') {
     const hrs = parseFloat(v.replace(/[^\d.]/g, ''));
-    if (!isFinite(hrs)) { st.toast('Enter work in hours, e.g. 40.', true); return false; }
+    if (!isFinite(hrs)) { st.toast(t('Enter work in hours, e.g. 40.'), true); return false; }
     let err = '';
     edit((t, p) => { err = ops.setWork(p, t, hrs); if (err) return false; });
     if (err) { st.toast(err, true); return false; }
@@ -106,7 +107,7 @@ function Timeline({ st }: { st: Store }) {
   return (
     <div className="timeline">
       <div className="tl-inner">
-        <div className="tl-date start">Start<b>{U.fmtLong(s.startDn)}</b></div>
+        <div className="tl-date start">{t('Start')}<b>{U.fmtLong(s.startDn)}</b></div>
         <div className="tl-track" style={extra ? { height: 58 + extra * 18 } : undefined}>
           {phases.map(({ r, lane, l, w }: any) => (
             <div key={r.task.uid} className={'tl-seg lane' + (lane < 3 ? lane : 2)} style={{ left: l + '%', width: w + '%', ...laneStyle(lane) }}
@@ -117,9 +118,9 @@ function Timeline({ st }: { st: Store }) {
           {s.rows.filter((r: Row) => r.milestone).map((r: Row) => (
             <div key={r.task.uid} className="tl-ms" style={{ left: pct(r.startDn + 1) + '%' }} title={r.task.name + ' — ' + U.fmt(r.startDn)} onClick={() => pick(r.task.uid)}><i /></div>
           ))}
-          {today >= s.startDn && today <= s.finishDn && <div className="tl-today" style={{ left: pct(today) + '%' }} title="Today" />}
+          {today >= s.startDn && today <= s.finishDn && <div className="tl-today" style={{ left: pct(today) + '%' }} title={t('Today')} />}
         </div>
-        <div className="tl-date finish">Finish<b>{U.fmtLong(s.finishDn)}</b></div>
+        <div className="tl-date finish">{t('Finish')}<b>{U.fmtLong(s.finishDn)}</b></div>
       </div>
     </div>
   );
@@ -128,37 +129,37 @@ function Timeline({ st }: { st: Store }) {
 /* ---------- grid ---------- */
 
 function Indicators({ st, r }: { st: Store; r: Row }) {
-  const t = r.task, out: JSX.Element[] = [];
-  if (st.critical && r.critical && !r.summary) out.push(<span key="c" className="crit" title="On the critical path"><Icon name="flag" /></span>);
-  if (r.over) out.push(<span key="o" className="over" title="A resource on this task is overallocated"><Icon name="alert" /></span>);
+  const task = r.task, out: JSX.Element[] = [];
+  if (st.critical && r.critical && !r.summary) out.push(<span key="c" className="crit" title={t('On the critical path')}><Icon name="flag" /></span>);
+  if (r.over) out.push(<span key="o" className="over" title={t('A resource on this task is overallocated')}><Icon name="alert" /></span>);
   if (r.conflict) out.push(<span key="x" className="crit" title={r.conflict}><Icon name="alert" /></span>);
-  if (r.missedDeadline) out.push(<span key="d" className="crit" title="Finishes after its deadline"><Icon name="deadline" /></span>);
-  if (!r.summary && t.constraint !== 'ASAP') out.push(<span key="p" title={M.CONSTRAINTS[t.constraint] + (t.constraintDate ? ' ' + U.fmt(U.parseDate(t.constraintDate)) : '')}><Icon name="pin" /></span>);
-  if (r.late && !r.summary) out.push(<span key="l" className="over" title="Behind schedule at the status date"><Icon name="clock" /></span>);
-  if (r.percent >= 100) out.push(<span key="k" className="done" title="Complete"><Icon name="check" /></span>);
-  if (t.levelDelay) out.push(<span key="v" title={'Delayed ' + U.num(t.levelDelay) + 'd by leveling'}><Icon name="balance" /></span>);
-  if (t.notes) out.push(<span key="n" title={t.notes}><Icon name="note" /></span>);
+  if (r.missedDeadline) out.push(<span key="d" className="crit" title={t('Finishes after its deadline')}><Icon name="deadline" /></span>);
+  if (!r.summary && task.constraint !== 'ASAP') out.push(<span key="p" title={M.CONSTRAINTS[task.constraint] + (task.constraintDate ? ' ' + U.fmt(U.parseDate(task.constraintDate)) : '')}><Icon name="pin" /></span>);
+  if (r.late && !r.summary) out.push(<span key="l" className="over" title={t('Behind schedule at the status date')}><Icon name="clock" /></span>);
+  if (r.percent >= 100) out.push(<span key="k" className="done" title={t('Complete')}><Icon name="check" /></span>);
+  if (task.levelDelay) out.push(<span key="v" title={t('Delayed {n}d by leveling', { n: U.num(task.levelDelay) })}><Icon name="balance" /></span>);
+  if (task.notes) out.push(<span key="n" title={task.notes}><Icon name="note" /></span>);
   return <td className="ind"><span className="ind-icons">{out}</span></td>;
 }
 
 // Notes column: multi-line text wraps in the cell; click (or keyboard navigation) to edit.
 function NotesCell({ st, r }: { st: Store; r: Row }) {
   const [edit, setEdit] = useState(false);
-  const t = r.task, uid = t.uid;
+  const task = r.task, uid = task.uid;
   const focusSel = () => { if (!(st.sel.length === 1 && st.sel[0] === uid)) st.select([uid], uid); };
   if (edit) return (
     <td className="notes-cell" onBlur={() => setEdit(false)}>
-      <Field className="cell notes" fk={uid + ':notes'} value={t.notes || ''} autoFocus spellCheck={false}
-        aria-label={'Task ' + r.id + ' notes'} onFocus={focusSel}
+      <Field className="cell notes" fk={uid + ':notes'} value={task.notes || ''} autoFocus spellCheck={false}
+        aria-label={t('Task {id} notes', { id: r.id })} onFocus={focusSel}
         onCommit={v => { commitCell('notes', uid, v); }}
         onNav={d => { setEdit(false); navFrom(uid, 'notes', d); }} />
     </td>
   );
   return (
-    <td className="notes-cell" title={t.notes} onClick={e => { clickSelect(uid, e); setEdit(true); }}>
-      <div className="notes-view">{t.notes || ''}</div>
+    <td className="notes-cell" title={task.notes} onClick={e => { clickSelect(uid, e); setEdit(true); }}>
+      <div className="notes-view">{task.notes || ''}</div>
       {/* Invisible anchor so keyboard navigation (focusKey) can reach this cell. */}
-      <Field className="notes-ghost" fk={uid + ':notes'} value={t.notes || ''} tabIndex={-1} aria-hidden="true"
+      <Field className="notes-ghost" fk={uid + ':notes'} value={task.notes || ''} tabIndex={-1} aria-hidden="true"
         onFocus={() => { focusSel(); setEdit(true); requestAnimationFrame(() => focusKey(uid + ':notes', false)); }}
         onCommit={() => {}} />
     </td>
@@ -166,20 +167,20 @@ function NotesCell({ st, r }: { st: Store; r: Row }) {
 }
 
 function Cell({ st, k, r, idx }: { st: Store; k: string; r: Row; idx: any }) {
-  const c = colDef(st, k)!, t = r.task, uid = t.uid;
+  const c = colDef(st, k)!, task = r.task, uid = task.uid;
   const focusSel = () => { if (!(st.sel.length === 1 && st.sel[0] === uid)) st.select([uid], uid); };
   if (k === 'id') return <td className="id" onClick={e => clickSelect(uid, e)}>{r.id}</td>;
   if (k === 'ind') return <Indicators st={st} r={r} />;
   if (k === 'notes') return <NotesCell st={st} r={r} />;
   if (k === 'name') {
-    const lvl = st.group !== 'none' ? 1 : t.level;
+    const lvl = st.group !== 'none' ? 1 : task.level;
     return (
       <td>
         <div className="namecell" style={{ paddingLeft: (lvl - 1) * 16 + 4 }}>
           {r.summary && st.group === 'none'
-            ? <button className="caret" aria-label="Expand or collapse" onClick={() => st.setUI({ collapsed: { ...st.collapsed, [uid]: !st.collapsed[uid] } })}><Icon name={st.collapsed[uid] ? 'chevR' : 'chevD'} /></button>
+            ? <button className="caret" aria-label={t('Expand or collapse')} onClick={() => st.setUI({ collapsed: { ...st.collapsed, [uid]: !st.collapsed[uid] } })}><Icon name={st.collapsed[uid] ? 'chevR' : 'chevD'} /></button>
             : <span className="caret none" />}
-          <Field className="cell name" fk={uid + ':name'} value={t.name} placeholder="Task name" spellCheck={false} aria-label={'Task ' + r.id + ' name'}
+          <Field className="cell name" fk={uid + ':name'} value={task.name} placeholder={t('Task name')} spellCheck={false} aria-label={t('Task {id} name', { id: r.id })}
             onFocus={focusSel} onCommit={v => commitCell('name', uid, v)} onNav={d => navFrom(uid, 'name', d)} />
         </div>
       </td>
@@ -187,21 +188,21 @@ function Cell({ st, k, r, idx }: { st: Store; k: string; r: Row; idx: any }) {
   }
   if (k === 'res') {
     return (
-      <td className="ro linkish" title={r.summary ? '' : 'Click to assign resources'}
+      <td className="ro linkish" title={r.summary ? '' : t('Click to assign resources')}
         onClick={() => { st.select([uid], uid); st.setUI({ drawer: true }); focusKey('d:addres', false); }}>
-        {r.summary ? '' : r.names || (st.p.resources.length ? '+ assign' : '')}
+        {r.summary ? '' : r.names || (st.p.resources.length ? t('+ assign') : '')}
       </td>
     );
   }
   if (k === 'preds') {
-    return <td><Field className="cell" fk={uid + ':preds'} value={M.formatPreds(st.p, t, idx)} spellCheck={false} aria-label={'Task ' + r.id + ' predecessors'}
+    return <td><Field className="cell" fk={uid + ':preds'} value={M.formatPreds(st.p, task, idx)} spellCheck={false} aria-label={t('Task {id} predecessors', { id: r.id })}
       onFocus={focusSel} onCommit={v => commitCell('preds', uid, v)} onNav={d => navFrom(uid, 'preds', d)} /></td>;
   }
   const ro = !c.edit || (r.summary && c.sumRo);
-  const fieldVal = c.field ? String((t as unknown as Record<string, unknown>)[c.field] ?? '') : '';
-  const val = c.get ? c.get(r) : c.cf ? (t.custom[c.cf] == null ? '' : String(t.custom[c.cf])) : fieldVal;
+  const fieldVal = c.field ? String((task as unknown as Record<string, unknown>)[c.field] ?? '') : '';
+  const val = c.get ? c.get(r) : c.cf ? (task.custom[c.cf] == null ? '' : String(task.custom[c.cf])) : fieldVal;
   if (ro) return <td className={'ro' + (c.num ? ' num' : '')}>{val}</td>;
-  const fk = uid + ':' + k, label = 'Task ' + r.id + ' ' + c.t;
+  const fk = uid + ':' + k, label = t('Task {id} {col}', { id: r.id, col: c.t });
   if (c.edit === 'date') return <td><DateField className="cell" fk={fk} value={fieldVal} aria-label={label} onFocus={focusSel} onCommit={v => { commitCell(k, uid, v); }} /></td>;
   if (c.edit === 'select') {
     return <td><select className="cell" data-fk={fk} value={fieldVal} aria-label={label} onFocus={focusSel} onChange={e => commitCell(k, uid, e.target.value)}>
@@ -226,7 +227,7 @@ function Grid({ st, list, onCtx }: { st: Store; list: (Row | GroupItem)[]; onCtx
               <tr key={item.key} className="grouprow"><td colSpan={ks.length}>
                 <div className="namecell">
                   <button className="caret" onClick={() => st.setUI({ collapsed: { ...st.collapsed, [item.key]: !st.collapsed[item.key] } })}><Icon name={st.collapsed[item.key] ? 'chevR' : 'chevD'} /></button>
-                  <b>{item.label}</b><span className="muted small">&nbsp;· {item.count} task{item.count === 1 ? '' : 's'} · {U.money(item.cost, st.p.currency)}</span>
+                  <b>{item.label}</b><span className="muted small">&nbsp;· {item.count === 1 ? t('{n} task', { n: item.count }) : t('{n} tasks', { n: item.count })} · {U.money(item.cost, st.p.currency)}</span>
                 </div>
               </td></tr>
             )
@@ -240,7 +241,7 @@ function Grid({ st, list, onCtx }: { st: Store; list: (Row | GroupItem)[]; onCtx
             <tr className="newrow">
               <td className="id">{st.p.tasks.length + 1}</td><td />
               <td><div className="namecell" style={{ paddingLeft: 4 }}><span className="caret none" />
-                <Field className="cell" fk="new" value="" placeholder="Type a new task name and press Enter…" spellCheck={false}
+                <Field className="cell" fk="new" value="" placeholder={t('Type a new task name and press Enter…')} spellCheck={false}
                   onCommit={v => { if (v.trim()) ops.addTaskNamed(v.trim()); return false; }} onNav={() => focusKey('new', false)} />
               </div></td>
               <td colSpan={Math.max(1, ks.length - 3)} />
@@ -248,8 +249,8 @@ function Grid({ st, list, onCtx }: { st: Store; list: (Row | GroupItem)[]; onCtx
           )}
         </tbody>
       </table>
-      {!st.p.tasks.length && <div className="empty"><h3>No tasks yet</h3><div>Type a task name in the row above, or load the sample from File › New.</div></div>}
-      {!!st.p.tasks.length && !list.length && <div className="empty"><h3>No matching tasks</h3><div>Change the filter to see more tasks.</div></div>}
+      {!st.p.tasks.length && <div className="empty"><h3>{t('No tasks yet')}</h3><div>{t('Type a task name in the row above, or load the sample from File › New.')}</div></div>}
+      {!!st.p.tasks.length && !list.length && <div className="empty"><h3>{t('No matching tasks')}</h3><div>{t('Change the filter to see more tasks.')}</div></div>}
     </>
   );
 }
@@ -292,15 +293,15 @@ function dragMove(e: PointerEvent) {
     drag.ghost.style.display = 'none';
     drag.line.setAttribute('x1', pos.e); drag.line.setAttribute('y1', pos.y);
     drag.line.setAttribute('x2', e.clientX - drag.rect.left); drag.line.setAttribute('y2', e.clientY - drag.rect.top);
-    setTip(e, 'Link to…');
+    setTip(e, t('Link to…'));
   } else if (drag.mode === 'move') {
     const cal = S().s.cal;
     drag.ghost.setAttribute('x', pos.s + days * g.ppd);
-    setTip(e, 'Start ' + U.fmt(cal.date(cal.indexOf(drag.r.startDn + days))));
+    setTip(e, t('Start {date}', { date: U.fmt(cal.date(cal.indexOf(drag.r.startDn + days))) }));
   } else {
     const cal = S().s.cal, nf = Math.max(drag.r.startDn, drag.r.finishDn + days);
     drag.ghost.setAttribute('width', Math.max(g.ppd, pos.e - pos.s + days * g.ppd));
-    setTip(e, 'Finish ' + U.fmt(Math.max(drag.r.startDn, cal.date(Math.max(0, cal.finishIndex(nf) - 1)))));
+    setTip(e, t('Finish {date}', { date: U.fmt(Math.max(drag.r.startDn, cal.date(Math.max(0, cal.finishIndex(nf) - 1)))) }));
   }
 }
 
@@ -313,7 +314,7 @@ function dragEnd(e: PointerEvent) {
   if (drag.mode === 'link') {
     const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.gbar') as SVGGElement | null;
     const tu = target ? +target.dataset.uid! : 0;
-    if (tu && ops.addLink(uid, tu)) st.toast('Linked ' + r.id + ' → ' + rowByUid(tu)!.id + ' (finish-to-start)');
+    if (tu && ops.addLink(uid, tu)) st.toast(t('Linked {a} → {b} (finish-to-start)', { a: r.id, b: rowByUid(tu)!.id }));
   } else if (drag.mode === 'move') {
     if (!days) return;
     const ns = cal.date(cal.indexOf(r.startDn + days)), t0 = r.task;
@@ -321,25 +322,25 @@ function dragEnd(e: PointerEvent) {
     // Report when links keep the task from moving as far as it was dropped.
     const report = (msg: string) => {
       const after = rowByUid(uid);
-      st.toast(after && after.startDn > ns ? msg + '. Its predecessors keep it from starting before ' + U.fmt(after.startDn) + '.' : msg);
+      st.toast(after && after.startDn > ns ? t('{msg}. Its predecessors keep it from starting before {date}.', { msg, date: U.fmt(after.startDn) }) : msg);
     };
     if (t0.actualStart) {
       st.commit(p => { ops.findTask(p, uid).actualStart = U.iso(ns); });
-      report('Actual start moved to ' + U.fmt(ns));
+      report(t('Actual start moved to {date}', { date: U.fmt(ns) }));
     } else if (t0.constraint === 'MSO' || t0.constraint === 'MFO') {
       // Hard constraints move with the bar instead of being replaced.
       st.commit(p => {
         const t = ops.findTask(p, uid), cd = U.parseDate(t.constraintDate);
         t.constraintDate = t.constraint === 'MSO' || cd == null ? U.iso(ns) : U.iso(cal.date(Math.max(0, cal.indexOf(cd) + shift)));
       });
-      report(M.CONSTRAINTS[t0.constraint] + ' date moved');
+      report(t('{constraint} date moved', { constraint: M.CONSTRAINTS[t0.constraint] }));
     } else {
       const apply = () => {
         S().commit(p => { const t = ops.findTask(p, uid); t.constraint = 'SNET'; t.constraintDate = U.iso(ns); });
-        report('Start no earlier than ' + U.fmt(ns));
+        report(t('Start no earlier than {date}', { date: U.fmt(ns) }));
       };
       if (t0.constraint === 'ASAP' || t0.constraint === 'SNET') apply();
-      else ask('Replace the “' + M.CONSTRAINTS[t0.constraint] + '” constraint with “Start no earlier than ' + U.fmt(ns) + '”?', apply, 'Replace');
+      else ask(t('Replace the “{constraint}” constraint with “Start no earlier than {date}”?', { constraint: M.CONSTRAINTS[t0.constraint], date: U.fmt(ns) }), apply, t('Replace'));
     }
   } else {
     if (!days) return;
@@ -365,18 +366,18 @@ export default function GanttView() {
     setCtx({ uid, x, y });
   };
   const ctxItems = (uid: number): CtxItem[] => [
-    { label: 'Copy', icon: 'copy', onClick: () => ops.copyTasks(st.sel.includes(uid) ? st.sel : [uid]) },
-    { label: 'Paste', icon: 'paste', disabled: !ops.hasClip(), onClick: () => ops.pasteTasks(uid) },
+    { label: t('Copy'), icon: 'copy', onClick: () => ops.copyTasks(st.sel.includes(uid) ? st.sel : [uid]) },
+    { label: t('Paste'), icon: 'paste', disabled: !ops.hasClip(), onClick: () => ops.pasteTasks(uid) },
     { hr: true },
-    { label: 'Insert task before', icon: 'plus', onClick: () => { const u = ops.addTaskNear(uid, 'before'); if (u) focusKey(u + ':name'); } },
-    { label: 'Insert task after', icon: 'plus', onClick: () => { const u = ops.addTaskNear(uid, 'after'); if (u) focusKey(u + ':name'); } },
-    { label: 'Fill down (Ctrl+D)', icon: 'down', onClick: () => ops.fillDown() },
-    ...(st.sel.length > 1 ? [{ label: `Batch edit ${st.sel.length} tasks…`, icon: 'settings', onClick: () => st.openDialog('batchedit', { uids: st.sel }) }] : []),
+    { label: t('Insert task before'), icon: 'plus', onClick: () => { const u = ops.addTaskNear(uid, 'before'); if (u) focusKey(u + ':name'); } },
+    { label: t('Insert task after'), icon: 'plus', onClick: () => { const u = ops.addTaskNear(uid, 'after'); if (u) focusKey(u + ':name'); } },
+    { label: t('Fill down (Ctrl+D)'), icon: 'down', onClick: () => ops.fillDown() },
+    ...(st.sel.length > 1 ? [{ label: t('Batch edit {n} tasks…', { n: st.sel.length }), icon: 'settings', onClick: () => st.openDialog('batchedit', { uids: st.sel }) }] : []),
   ];
 
   const g = useMemo(() => C.gantt({
     p: st.p, s: st.s, rows: list, zoom: st.zoom, critical: st.critical, baseline: st.showBaseline && !!st.p.baseline
-  }), [st.p, st.s, list, st.zoom, st.critical, st.showBaseline]);
+  }), [st.p, st.s, list, st.zoom, st.critical, st.showBaseline, st.lang]);
   chartGeom = g;
 
   // Selection highlight is drawn into the existing SVG so selecting does not rebuild the chart.
@@ -439,14 +440,18 @@ export default function GanttView() {
   return (
     <div className="view gantt-view">
       {st.timeline && st.p.tasks.length > 0 && <Timeline st={st} />}
-      {st.s.cycle.length > 0 && <div className="alert"><Icon name="alert" />Dependency loop between tasks {st.s.cycle.join(', ')}. Remove one of the links to fix the schedule.</div>}
+      {st.s.cycle.length > 0 && <div className="alert"><Icon name="alert" />{t('Dependency loop between tasks {ids}. Remove one of the links to fix the schedule.', { ids: st.s.cycle.join(', ') })}</div>}
       {conflicts > 0 && st.filter !== 'conflicts' && (
-        <div className="alert warn"><Icon name="alert" />{conflicts} task{conflicts > 1 ? 's have' : ' has'} a constraint that conflicts with its links.{' '}
-          <button className="linkbtn" onClick={() => st.setUI({ filter: 'conflicts' })}>Show them</button></div>
+        <div className="alert warn"><Icon name="alert" />{conflicts > 1
+          ? t('{n} tasks have a constraint that conflicts with its links.', { n: conflicts })
+          : t('{n} task has a constraint that conflicts with its links.', { n: conflicts })}{' '}
+          <button className="linkbtn" onClick={() => st.setUI({ filter: 'conflicts' })}>{t('Show them')}</button></div>
       )}
       {(st.filter !== 'all' || st.group !== 'none') && (
-        <div className="alert info"><Icon name="filter" />Showing: {md.filters[st.filter] || st.filter}{st.group !== 'none' ? ', grouped by ' + (md.groups[st.group] || st.group) : ''}{' '}
-          <button className="linkbtn" onClick={() => st.setUI({ filter: 'all', group: 'none' })}>Show all tasks</button></div>
+        <div className="alert info"><Icon name="filter" />{st.group !== 'none'
+          ? t('Showing: {filter}, grouped by {group}', { filter: md.filters[st.filter] || st.filter, group: md.groups[st.group] || st.group })
+          : t('Showing: {filter}', { filter: md.filters[st.filter] || st.filter })}{' '}
+          <button className="linkbtn" onClick={() => st.setUI({ filter: 'all', group: 'none' })}>{t('Show all tasks')}</button></div>
       )}
       <div className="split" data-hide={hide}>
         <div className="grid-pane" ref={gridRef} style={{ width: st.gridW }} onScroll={e => sync(e.currentTarget, chartEl)}
@@ -462,14 +467,14 @@ export default function GanttView() {
           }}>
           <Grid st={st} list={list} onCtx={openCtx} />
         </div>
-        <div className="splitter" title="Drag to resize, or to either edge to hide a side" onPointerDown={startSplit}>
+        <div className="splitter" title={t('Drag to resize, or to either edge to hide a side')} onPointerDown={startSplit}>
           <div className="split-btns" onPointerDown={e => e.stopPropagation()}>
             {hide !== 'table' && (
-              <button className="flip" title={hide === 'chart' ? 'Show the chart' : 'Hide the task table'} aria-label={hide === 'chart' ? 'Show the chart' : 'Hide the task table'}
+              <button className="flip" title={hide === 'chart' ? t('Show the chart') : t('Hide the task table')} aria-label={hide === 'chart' ? t('Show the chart') : t('Hide the task table')}
                 onClick={() => st.setUI({ ganttHide: hide === 'chart' ? 'none' : 'table' })}><Icon name="chevR" /></button>
             )}
             {hide !== 'chart' && (
-              <button title={hide === 'table' ? 'Show the task table' : 'Hide the chart'} aria-label={hide === 'table' ? 'Show the task table' : 'Hide the chart'}
+              <button title={hide === 'table' ? t('Show the task table') : t('Hide the chart')} aria-label={hide === 'table' ? t('Show the task table') : t('Hide the chart')}
                 onClick={() => st.setUI({ ganttHide: hide === 'table' ? 'none' : 'chart' })}><Icon name="chevR" /></button>
             )}
           </div>

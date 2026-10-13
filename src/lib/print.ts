@@ -2,7 +2,8 @@
 // node rows so no box is ever sliced across a page, with a configurable header
 // and footer. The browser's own print preview shows the result.
 import OP from '../core';
-import { VIEW_NAMES, type Store, type PrintConfig, type PrintSlot } from '../store';
+import { t } from '../i18n';
+import { viewName, type Store, type PrintConfig, type PrintSlot } from '../store';
 import { viewSvgString } from './actions';
 
 const U = OP.util, IO = OP.io;
@@ -43,7 +44,7 @@ function pageCuts(H: number, pageH: number, boxes: { y0: number; y1: number }[])
 
 function slotText(slot: PrintSlot, page: number, total: number, projectName: string): string {
   switch (slot.type) {
-    case 'page': return 'Page ' + page + ' of ' + total;
+    case 'page': return t('Page {n} of {m}', { n: page, m: total });
     case 'date': return new Date().toLocaleDateString();
     case 'project': return projectName;
     case 'custom': return slot.text;
@@ -61,7 +62,7 @@ function slotRow(slots: [PrintSlot, PrintSlot, PrintSlot], page: number, total: 
 export function printView(st: Store, cfg: PrintConfig) {
   const str = viewSvgString(st);
   if (!str) { window.print(); return; }
-  const title = st.p.name + ' — ' + VIEW_NAMES[st.view];
+  const title = st.p.name + ' — ' + viewName(st.view);
   if (st.view === 'gantt') { IO.printSVG(svgEl(str), title); return; }
 
   const svg = svgEl(str);

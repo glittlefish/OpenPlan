@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useStore, S, VIEW_NAMES } from './store';
+import { useStore, S, viewName } from './store';
 import { runAction } from './lib/actions';
 import * as ops from './lib/taskOps';
 import { TitleBar, StatusBar, Backstage } from './components/Chrome';
@@ -48,6 +48,7 @@ export default function App() {
   const view = useStore(s => s.view);
   const bars = useStore(s => s.bars);
   const findOpen = useStore(s => s.findOpen);
+  const lang = useStore(s => s.lang); // re-render on language switch so viewbar text updates
 
   useEffect(() => { document.documentElement.setAttribute('data-bars', bars); }, [bars]);
   useEffect(() => {
@@ -65,7 +66,7 @@ export default function App() {
     <TitleBar />
     <Ribbon />
     <div className="layout">
-      <div className="viewbar" aria-hidden="true"><span>{VIEW_NAMES[view]}</span></div>
+      <div className="viewbar" aria-hidden="true"><span>{viewName(view)}</span></div>
       {findOpen && <FindBar />}
       <main><View /></main>
       <Drawer />
