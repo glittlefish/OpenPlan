@@ -390,6 +390,11 @@ const zh: Record<string, string> = {
   'Add subtask': '添加子任务',
   'Reset layout': '重置布局', 'Reset node position': '重置节点位置',
   'Clear manual node positions and restore the automatic layout': '清除手动节点位置，恢复自动布局',
+  'New task here': '在此处新建任务',
+  'Curved': '曲线', 'Straight': '直线', 'Right-angle': '直角折线',
+  'Thin (1 px)': '细（1 像素）', 'Medium (2 px)': '中（2 像素）', 'Thick (3 px)': '粗（3 像素）',
+  'Automatic color': '自动配色', 'Red': '红色', 'Blue': '蓝色', 'Green': '绿色', 'Orange': '橙色', 'Gray': '灰色',
+  'Reset bend': '重置弯曲', 'Reset edge style': '重置连线样式',
 
   /* ---------- links / constraints / leveling / baseline / tracking ---------- */
   'Link the Selected Tasks': '链接选中任务', 'Unlink Tasks': '取消任务链接',

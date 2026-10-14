@@ -313,14 +313,41 @@ OP.model = (function () {
     });
     if (!isObj(p.baseline) || !isObj(p.baseline.tasks)) p.baseline = null;
     else p.baseline.savedAt = str(p.baseline.savedAt);
-    // Network diagram: manual node positions — keep only valid entries for existing tasks.
+    // Network diagram: manual node positions — keep only valid entries for existing tasks,
+    // plus the draggable Start/Finish sentinels (reserved keys 'start' / 'finish').
     var np = isObj(p.netPos) ? p.netPos : {};
     var good = {};
     p.tasks.forEach(function (t) {
       var q = np[t.uid];
       if (isObj(q) && isFinite(+q.x) && isFinite(+q.y)) good[t.uid] = { x: +q.x, y: +q.y };
     });
+    ['start', 'finish'].forEach(function (k) {
+      var q = np[k];
+      if (isObj(q) && isFinite(+q.x) && isFinite(+q.y)) good[k] = { x: Math.max(0, +q.x), y: Math.max(0, +q.y) };
+    });
     p.netPos = good;
+    // Network diagram: per-edge bend / line-style overrides, keyed "from-to" (uid or sentinel).
+    var ne = isObj(p.netEdge) ? p.netEdge : {};
+    var neGood = {};
+    var uidOk = {}; p.tasks.forEach(function (t) { uidOk[t.uid] = true; });
+    Object.keys(ne).slice(0, 2000).forEach(function (k) {
+      var v = ne[k];
+      if (!isObj(v) || typeof k !== 'string' || !k.length) return;
+      // Keys are "from-to"; each side must be an existing task uid or a sentinel.
+      if (!k.split('-').every(function (u) { return u === 'start' || u === 'finish' || uidOk[u]; })) return;
+      var out = {};
+      if (isFinite(+v.bend)) out.bend = +v.bend;
+      if (isObj(v.style)) {
+        var s2 = {};
+        if (['curve', 'line', 'ortho'].indexOf(v.style.kind) >= 0) s2.kind = v.style.kind;
+        if ([1, 2, 3].indexOf(+v.style.width) >= 0) s2.width = +v.style.width;
+        if (typeof v.style.color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(v.style.color)) s2.color = v.style.color;
+        if (v.style.dash) s2.dash = true;
+        if (Object.keys(s2).length) out.style = s2;
+      }
+      if (Object.keys(out).length) neGood[k] = out;
+    });
+    p.netEdge = neGood;
     // Free text boxes (PRD M13): sanitize and keep only entries that can still render.
     p.annotations = arr(p.annotations).filter(isObj).slice(0, 200).map(function (a) {
       return {
@@ -444,6 +471,20 @@ OP.model = (function () {
     uids.forEach(function (u) { set[u] = true; });
     p.tasks = p.tasks.filter(function (t) { return !set[t.uid]; });
     p.tasks.forEach(function (t) { t.preds = t.preds.filter(function (l) { return !set[l.uid]; }); });
+    // Drop manual network positions, edge overrides and bound text boxes that referenced the removed tasks.
+    if (isObj(p.netPos)) Object.keys(p.netPos).forEach(function (k) { if (set[k]) delete p.netPos[k]; });
+    if (isObj(p.netEdge)) Object.keys(p.netEdge).forEach(function (k) {
+      if (k.split('-').some(function (u) { return set[u]; })) delete p.netEdge[k];
+    });
+    if (arr(p.annotations).length) p.annotations = p.annotations.filter(function (a) {
+      if (!isObj(a)) return true;
+      if (a.mode === 'task' && set[a.taskUid]) return false;
+      if (a.mode === 'group') {
+        a.uids = arr(a.uids).filter(function (u) { return !set[u]; });
+        if (!a.uids.length) return false;
+      }
+      return true;
+    });
     normalizeLevels(p);
   }
 

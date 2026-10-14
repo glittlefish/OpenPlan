@@ -28,7 +28,12 @@ OP.charts = (function () {
     '.anno{cursor:move}.anno.group{cursor:default}.anno-box{fill:var(--surface);stroke:var(--border-strong);stroke-width:1}' +
     '.anno.group .anno-box{fill:none;stroke:var(--accent);stroke-width:1.5;stroke-dasharray:6 4}' +
     '.anno.sel .anno-box{stroke:var(--accent);stroke-width:2}.anno-handle{fill:var(--accent);opacity:0;cursor:nwse-resize}' +
-    '.anno:hover .anno-handle{opacity:.65}';
+    '.anno:hover .anno-handle{opacity:.65}' +
+    '.lnk-hit{stroke:transparent;stroke-width:14;fill:none;pointer-events:stroke}' +
+    '.lnk-handle{fill:var(--accent);stroke:var(--surface);stroke-width:1;opacity:0;cursor:ns-resize}' +
+    '.lnk-handle.h-ortho{cursor:ew-resize}.lnk-g:hover .lnk-handle{opacity:.9}' +
+    '.nsent{cursor:move}' +
+    '.rubber{fill:var(--accent);fill-opacity:.08;stroke:var(--accent);stroke-width:1;stroke-dasharray:4 3;pointer-events:none}';
 
   function svgOpen(w, h, cls) {
     return '<svg xmlns="http://www.w3.org/2000/svg" class="' + (cls || '') + '" width="' + Math.ceil(w) + '" height="' + Math.ceil(h) +
@@ -477,10 +482,47 @@ OP.charts = (function () {
     if (nAnnoExt) { W = Math.max(W, nAnnoExt.x + 20); H = Math.max(H, nAnnoExt.y + 20); }
     var midY = PAD + LEG + (maxRows * NH + (maxRows - 1) * GY) / 2;
     var startN = { x: PAD, y: midY }, endN = { x: W - PAD - SW, y: midY };
+    // Draggable Start/Finish sentinels keep their position in netPos under the reserved keys.
+    var okPos = function (q) { return q && typeof q === 'object' && isFinite(+q.x) && isFinite(+q.y) ? { x: +q.x, y: +q.y } : null; };
+    var sq = okPos(np['start']), eq2 = okPos(np['finish']);
+    if (sq) startN = sq;
+    if (eq2) endN = eq2;
+    W = Math.max(W, startN.x + SW + PAD, endN.x + SW + PAD);
+    H = Math.max(H, startN.y + 24 + PAD, endN.y + 24 + PAD);
+
+    // Dependency edges (task-to-task, plus Start/Finish sentinel links for root tasks).
+    var ne = (o.p && o.p.netEdge && typeof o.p.netEdge === 'object') ? o.p.netEdge : {};
+    var byI = {};
+    rows.forEach(function (r) { byI[r.i] = r; });
+    function port(i) { var p = at[i]; return { x1: p.x, x2: p.x + NW, y: p.y + NH / 2 }; }
+    var sPort = { x1: startN.x, x2: startN.x + SW, y: startN.y }, ePort = { x1: endN.x, x2: endN.x + SW, y: endN.y };
+    var edgeList = [];
+    edges.forEach(function (e) {
+      var a = byI[e.from], b = byI[e.to];
+      var from = e.type === 'FS' || e.type === 'FF' ? a.ef : a.es, to = e.type === 'FS' || e.type === 'SS' ? b.es : b.ef;
+      var crit = o.critical && a.critical && b.critical && Math.abs(from + e.lag - to) < 1e-9;
+      var key = a.task.uid + '-' + b.task.uid;
+      edgeList.push({ a: port(e.from), b: port(e.to), crit: crit, key: key, cfg: ne[key] });
+    });
+    rows.forEach(function (r) {
+      var crit = o.critical && r.critical;
+      var k1 = 'start-' + r.task.uid, k2 = r.task.uid + '-finish';
+      if (!hasIn[r.i]) edgeList.push({ a: sPort, b: port(r.i), crit: crit && r.es === 0, key: k1, cfg: ne[k1] });
+      if (!hasOut[r.i]) edgeList.push({ a: port(r.i), b: ePort, crit: crit && Math.abs(r.ef - s.duration) < 1e-9, key: k2, cfg: ne[k2] });
+    });
 
     var h = [svgOpen(W, H, 'net-svg')];
-    h.push('<defs><marker id="nah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="ah" d="M0,0L8,4L0,8z"/></marker>' +
-      '<marker id="nahc" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="ah c" d="M0,0L8,4L0,8z"/></marker></defs>');
+    var mk = '<marker id="nah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="ah" d="M0,0L8,4L0,8z"/></marker>' +
+      '<marker id="nahc" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="ah c" d="M0,0L8,4L0,8z"/></marker>';
+    // One arrow marker per custom edge color, so colored edges get matching arrowheads.
+    var seen = {};
+    edgeList.forEach(function (E) {
+      var c2 = E.cfg && E.cfg.style && E.cfg.style.color;
+      if (!c2 || seen[c2]) return;
+      seen[c2] = true;
+      mk += '<marker id="nahx' + String(c2).replace(/[^a-zA-Z0-9]/g, '') + '" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="ah" style="fill:' + c2 + '" d="M0,0L8,4L0,8z"/></marker>';
+    });
+    h.push('<defs>' + mk + '</defs>');
 
     // Legend
     var lx = PAD, ly = PAD;
@@ -490,29 +532,33 @@ OP.charts = (function () {
     h.push('<text class="m sm" x="' + (lx + NW + 16) + '" y="' + (ly + 58) + '">' + t('Red border and arrows = critical path (zero total slack).') + '</text>');
     h.push('<text class="m sm" x="' + (lx + NW + 16) + '" y="' + (ly + 76) + '">' + t('Slack = LS − ES. Project duration: {n} working days.', { n: U.num(s.duration) }) + '</text>');
 
-    function edgePath(a, b, crit) {
+    // One edge = a group with a wide transparent hit path (easy right-click / hover),
+    // the visible path, and a midpoint drag handle for the bend. Custom style
+    // attributes are inline so they win over the critical-path tint in CSS.
+    function edgePath(a, b, crit, cfg, key) {
       var x1 = a.x2, y1 = a.y, x2 = b.x1, y2 = b.y, mx = (x1 + x2) / 2;
-      return '<path class="lnk' + (crit ? ' c' : '') + '" d="M' + x1 + ',' + y1 + 'C' + mx + ',' + y1 + ' ' + mx + ',' + y2 + ' ' + (x2 - 1) + ',' + y2 + '" marker-end="url(#nah' + (crit ? 'c' : '') + ')"/>';
+      var sty = (cfg && cfg.style) || {}, kind = sty.kind || 'curve';
+      var bend = cfg && isFinite(+cfg.bend) ? +cfg.bend : 0;
+      var d, hx, hy;
+      if (kind === 'line') { d = 'M' + x1 + ',' + y1 + 'L' + (x2 - 1) + ',' + y2; hx = (x1 + x2) / 2; hy = (y1 + y2) / 2; }
+      else if (kind === 'ortho') { var ex = mx + bend; d = 'M' + x1 + ',' + y1 + 'H' + ex + 'V' + y2 + 'H' + (x2 - 1); hx = ex; hy = (y1 + y2) / 2; }
+      else { d = 'M' + x1 + ',' + y1 + 'C' + mx + ',' + (y1 + bend) + ' ' + mx + ',' + (y2 + bend) + ' ' + (x2 - 1) + ',' + y2; hx = (x1 + 6 * mx + x2) / 8; hy = (y1 + y2) / 2 + bend * 0.75; }
+      var inline = [];
+      if (sty.color) inline.push('stroke:' + sty.color);
+      if (sty.width) inline.push('stroke-width:' + sty.width);
+      if (sty.dash) inline.push('stroke-dasharray:6 4');
+      var arrow = crit && !sty.color ? 'nahc' : (sty.color ? 'nahx' + String(sty.color).replace(/[^a-zA-Z0-9]/g, '') : 'nah');
+      var out = '<g class="lnk-g" data-edge="' + esc(key) + '" data-x1="' + x1 + '" data-y1="' + y1 + '" data-x2="' + x2 + '" data-y2="' + y2 + '" data-kind="' + kind + '" data-bend="' + bend + '">';
+      out += '<path class="lnk-hit" d="' + d + '"/>';
+      out += '<path class="lnk' + (crit && !sty.color ? ' c' : '') + '"' + (inline.length ? ' style="' + inline.join(';') + '"' : '') + ' d="' + d + '" marker-end="url(#' + arrow + ')"/>';
+      if (kind !== 'line') out += '<circle class="lnk-handle' + (kind === 'ortho' ? ' h-ortho' : '') + '" cx="' + hx + '" cy="' + hy + '" r="4.5"/>';
+      return out + '</g>';
     }
-    function port(i) { var p = at[i]; return { x1: p.x, x2: p.x + NW, y: p.y + NH / 2 }; }
-    var sPort = { x1: startN.x, x2: startN.x + SW, y: startN.y }, ePort = { x1: endN.x, x2: endN.x + SW, y: endN.y };
-    var byI = {};
-    rows.forEach(function (r) { byI[r.i] = r; });
-    edges.forEach(function (e) {
-      var a = byI[e.from], b = byI[e.to];
-      var from = e.type === 'FS' || e.type === 'FF' ? a.ef : a.es, to = e.type === 'FS' || e.type === 'SS' ? b.es : b.ef;
-      var crit = o.critical && a.critical && b.critical && Math.abs(from + e.lag - to) < 1e-9;
-      h.push(edgePath(port(e.from), port(e.to), crit));
-    });
-    rows.forEach(function (r) {
-      var crit = o.critical && r.critical;
-      if (!hasIn[r.i]) h.push(edgePath(sPort, port(r.i), crit && r.es === 0));
-      if (!hasOut[r.i]) h.push(edgePath(port(r.i), ePort, crit && Math.abs(r.ef - s.duration) < 1e-9));
-    });
-    [[startN, t('Start'), '0'], [endN, t('Finish'), U.num(s.duration)]].forEach(function (n) {
-      h.push('<rect class="node c" x="' + n[0].x + '" y="' + (n[0].y - 24) + '" width="' + SW + '" height="48"/>');
-      h.push('<text class="b" text-anchor="middle" x="' + (n[0].x + SW / 2) + '" y="' + (n[0].y - 2) + '">' + n[1] + '</text>');
-      h.push('<text class="m sm" text-anchor="middle" x="' + (n[0].x + SW / 2) + '" y="' + (n[0].y + 13) + '">' + t('day {n}', { n: n[2] }) + '</text>');
+    edgeList.forEach(function (E) { h.push(edgePath(E.a, E.b, E.crit, E.cfg, E.key)); });
+    [['start', startN, t('Start'), '0'], ['finish', endN, t('Finish'), U.num(s.duration)]].forEach(function (n) {
+      h.push('<g class="nsent" data-sid="' + n[0] + '"><rect class="node c" x="' + n[1].x + '" y="' + (n[1].y - 24) + '" width="' + SW + '" height="48"/>' +
+        '<text class="b" text-anchor="middle" x="' + (n[1].x + SW / 2) + '" y="' + (n[1].y - 2) + '">' + n[2] + '</text>' +
+        '<text class="m sm" text-anchor="middle" x="' + (n[1].x + SW / 2) + '" y="' + (n[1].y + 13) + '">' + t('day {n}', { n: n[3] }) + '</text></g>');
     });
 
     function v(n) { return o.dates ? n : U.num(n); }

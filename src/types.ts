@@ -30,6 +30,17 @@ export interface Task {
   customStyle?: BoxStyle | null;
 }
 
+/** Network diagram: per-edge line style override (PRD follow-up). */
+export interface EdgeStyle {
+  /** 'curve' (default bezier), 'line' (straight) or 'ortho' (right-angle elbow). */
+  kind?: 'curve' | 'line' | 'ortho';
+  /** 1 | 2 | 3 px. */
+  width?: number;
+  /** Custom stroke color (hex); empty/undefined = automatic (default/critical) color. */
+  color?: string;
+  dash?: boolean;
+}
+
 export interface Resource {
   uid: number;
   name: string;
@@ -126,8 +137,10 @@ export interface Project {
   nextUid: number;
   tasks: Task[];
   resources: Resource[];
-  /** Network diagram: manual node positions (uid -> SVG coordinates), empty when layout is automatic. */
-  netPos?: Record<number, { x: number; y: number }>;
+  /** Network diagram: manual node positions (uid or 'start'/'finish' sentinel -> SVG coordinates). */
+  netPos?: Partial<Record<number | 'start' | 'finish', { x: number; y: number }>>;
+  /** Network diagram: per-edge overrides, keyed "fromUid-toUid" ('start'/'finish' for sentinels). */
+  netEdge?: Record<string, { bend?: number; style?: EdgeStyle }>;
   /** WBS/Network chart: free text box annotations (PRD M13). */
   annotations?: Annotation[];
   /** WBS/Network chart: box style rules, ordered by priority (first entries evaluated first). */

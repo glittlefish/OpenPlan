@@ -2,7 +2,7 @@ import OP from '../core';
 import { t } from '../i18n';
 import { ask, S, focusKey, rowByUid } from '../store';
 import { activeCols, colDef, gridItems, type GroupItem } from './grid';
-import type { Annotation, BoxRule, BoxStyle, Project, Row, Task } from '../types';
+import type { Annotation, BoxRule, BoxStyle, EdgeStyle, Project, Row, Task } from '../types';
 
 const U = OP.util, M = OP.model;
 
@@ -419,10 +419,11 @@ export function addResource() {
 }
 
 // ---- Network diagram: manual node positions (persisted in project.netPos) ----
+// uid may also be the 'start' / 'finish' sentinel key (draggable Start/Finish nodes).
 
-export function setNetPos(uid: number, x: number, y: number): boolean {
+export function setNetPos(uid: number | 'start' | 'finish', x: number, y: number): boolean {
   const st = S();
-  if (st.p.tasks.findIndex(t => t.uid === uid) < 0) return false;
+  if (uid !== 'start' && uid !== 'finish' && st.p.tasks.findIndex(t => t.uid === uid) < 0) return false;
   st.commit(p => {
     if (!p.netPos) p.netPos = {};
     p.netPos[uid] = { x: Math.max(0, Math.round(x)), y: Math.max(0, Math.round(y)) };
@@ -430,16 +431,89 @@ export function setNetPos(uid: number, x: number, y: number): boolean {
   return true;
 }
 
-export function removeNetPos(uid: number) {
+export function removeNetPos(uid: number | 'start' | 'finish') {
   const st = S();
   if (!st.p.netPos || !(uid in st.p.netPos)) return;
   st.commit(p => { delete p.netPos![uid]; });
 }
 
+// Reset layout: clear all node positions (tasks + sentinels) and edge bends.
+// Per-edge line styles are kept — they are styling, not layout.
 export function resetNetLayout() {
   const st = S();
-  if (!st.p.netPos || !Object.keys(st.p.netPos).length) return;
-  st.commit(p => { p.netPos = {}; });
+  if (!st.p.netPos && !st.p.netEdge) return;
+  st.commit(p => {
+    p.netPos = {};
+    if (p.netEdge) {
+      Object.keys(p.netEdge).forEach(k => {
+        const e = p.netEdge![k];
+        if (e) delete e.bend;
+        if (e && !e.style) delete p.netEdge![k];
+      });
+    }
+  });
+}
+
+// ---- Network diagram: per-edge bend / line-style overrides (project.netEdge) ----
+
+// patch.bend === null clears the bend; patch.style === null clears the style.
+export function updateNetEdge(key: string, patch: { bend?: number | null; style?: EdgeStyle | null }) {
+  const st = S();
+  st.commit(p => {
+    if (!p.netEdge) p.netEdge = {};
+    const cur = p.netEdge[key] || {};
+    if (patch.bend === null) delete cur.bend;
+    else if (patch.bend != null) cur.bend = Math.round(patch.bend);
+    if (patch.style === null) delete cur.style;
+    else if (patch.style != null) cur.style = patch.style;
+    if (Object.keys(cur).length) p.netEdge[key] = cur;
+    else delete p.netEdge[key];
+  });
+}
+
+// ---- Network diagram: create tasks in place (no Gantt jump) ----
+
+function newTaskName(p: Project): string {
+  const base = t('New task');
+  const n = 1 + p.tasks.filter(x => (x.name || '').startsWith(base)).length;
+  return base + ' ' + n;
+}
+
+// Create an independent task at the given network-chart position (rubber band / context menu).
+export function addTaskAt(x: number, y: number): number {
+  const st = S();
+  let uid = 0;
+  st.commit(p => {
+    const last = p.tasks[p.tasks.length - 1];
+    const lvl = last ? (M.isSummary(p, p.tasks.length - 1) ? last.level + 1 : last.level) : 1;
+    const nt = M.newTask(p, { name: newTaskName(p), level: lvl, duration: 1 });
+    uid = nt.uid;
+    p.tasks.push(nt);
+    if (!p.netPos) p.netPos = {};
+    p.netPos[uid] = { x: Math.max(0, Math.round(x)), y: Math.max(0, Math.round(y)) };
+  });
+  if (uid) st.select([uid], uid);
+  return uid;
+}
+
+// Drag a task "outward": create a successor at the drop point and link it FS in one commit.
+export function addLinkedTask(fromUid: number, x: number, y: number): number {
+  const st = S(), p = st.p;
+  if (M.indexByUid(p)[fromUid] == null) return 0;
+  let uid = 0;
+  st.commit(pp => {
+    const j = M.indexByUid(pp)[fromUid];
+    if (j == null) return;
+    const pos = M.subtreeEnd(pp, j), lvl = pp.tasks[j].level;
+    const nt = M.newTask(pp, { name: newTaskName(pp), level: lvl, duration: 1 });
+    uid = nt.uid;
+    pp.tasks.splice(pos, 0, nt);
+    nt.preds.push({ uid: fromUid, type: 'FS', lag: 0 });
+    if (!pp.netPos) pp.netPos = {};
+    pp.netPos[uid] = { x: Math.max(0, Math.round(x)), y: Math.max(0, Math.round(y)) };
+  });
+  if (uid) st.select([uid], uid);
+  return uid;
 }
 
 // ---- Box style rules (PRD M14) ----

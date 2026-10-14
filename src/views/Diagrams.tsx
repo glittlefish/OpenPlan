@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import OP from '../core';
 import { useApp, useStore, S } from '../store';
 import { runAction, viewSvgString } from '../lib/actions';
-import { addAnnotation, addLink, addTaskNear, copyTasks, hasClip, moveSubtreeTo, pasteTasks, removeAnnotation, removeNetPos, resetNetLayout, setCustomStyle, setNetPos, updateAnnotation } from '../lib/taskOps';
+import { addAnnotation, addLinkedTask, addLink, addTaskAt, addTaskNear, copyTasks, hasClip, moveSubtreeTo, pasteTasks, removeAnnotation, removeNetPos, resetNetLayout, setCustomStyle, setNetPos, updateAnnotation, updateNetEdge } from '../lib/taskOps';
+import type { EdgeStyle } from '../types';
 import Icon from '../components/Icon';
 import ContextMenu, { type CtxItem } from '../components/ContextMenu';
 import { t } from '../i18n';
@@ -14,18 +15,28 @@ import { t } from '../i18n';
 // dragMove (WBS): pointer-drag a node onto another node to move that task's subtree.
 // dragLink (Network): pointer-drag a node onto another node to create a dependency.
 // dragPos (Network): dropping a dragged node on empty canvas moves it there (netPos override).
+// dragOut (Network): Shift+drag a node onto empty canvas creates a linked successor there.
+// rubberCreate (Network): Shift+drag on empty canvas draws a rubber band; released, a task is
+// created at that spot. edgeBend (Network): commit a dragged edge-handle bend. onEdgeContextMenu:
+// right-click a dependency edge for its line-style menu.
 // annoView ('wbs'|'network'): enables free text box annotations — drag to move, corner to
 // resize, double-click to edit inline, Delete to remove, right-click for a context menu.
 // onNodeContextMenu: right-click on a node (uid) or on empty canvas (null) at the cursor position.
-function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, onAnnoContextMenu, dragMove, dragLink, dragPos, annoView }: {
+function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, onAnnoContextMenu, dragMove, dragLink, dragPos, annoView, dragOut, rubberCreate, onEdgeContextMenu, edgeBend }: {
   svg: string; nodeClass?: string; openMode?: 'drawer' | 'dialog';
   onNodeContextMenu?: (uid: number | null, x: number, y: number) => void;
   onAnnoContextMenu?: (id: string, x: number, y: number) => void;
   dragMove?: (uid: number, targetUid: number) => boolean;
   dragLink?: (fromUid: number, toUid: number) => boolean;
   dragPos?: (uid: number, x: number, y: number) => boolean;
+  dragOut?: (fromUid: number, x: number, y: number) => void;
+  rubberCreate?: (x: number, y: number, w: number, h: number) => void;
+  onEdgeContextMenu?: (edge: string, x: number, y: number) => void;
+  edgeBend?: (key: string, bend: number) => void;
   annoView?: 'wbs' | 'network';
 }) {
+  // Network node size, kept in sync with charts.js network().
+  const NW = 196, NH = 92;
   const ref = useRef<HTMLDivElement>(null);
   const zoom = useStore(s => s.netZoom);
   // Swallow the click/dblclick that follows a node drag, so a drag never reads as
@@ -38,6 +49,12 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, onAnno
   dragLinkRef.current = dragLink;
   const dragPosRef = useRef(dragPos);
   dragPosRef.current = dragPos;
+  const dragOutRef = useRef(dragOut);
+  dragOutRef.current = dragOut;
+  const rubberCreateRef = useRef(rubberCreate);
+  rubberCreateRef.current = rubberCreate;
+  const edgeBendRef = useRef(edgeBend);
+  edgeBendRef.current = edgeBend;
   const dragEnabled = !!dragMove && !!nodeClass;
   const linkEnabled = !!dragLink && !!nodeClass;
   useLayoutEffect(() => {
@@ -66,7 +83,10 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, onAnno
     let panning = false, px = 0, py = 0;
     const onDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
-      if ((e.target as Element).closest('g[data-uid], .anno')) return; // nodes and text boxes: click / drag, not pan
+      // Shift+drag on empty canvas is the rubber band (Network), not a pan.
+      if (e.shiftKey && rubberCreateRef.current) return;
+      // Nodes, annotations, sentinels and edges handle their own pointer interactions.
+      if ((e.target as Element).closest('g[data-uid], .anno, .nsent, .lnk-g')) return; // nodes and text boxes: click / drag, not pan
       panning = true; px = e.clientX; py = e.clientY;
       el.classList.add('panning');
       el.style.userSelect = 'none';
@@ -217,7 +237,8 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, onAnno
         const s = svgEl();
         const k = s ? s.getBoundingClientRect().width / (+s.dataset.w! || 1) : 1;
         dx = (e.clientX - sx) / k; dy = (e.clientY - sy) / k;
-        src.setAttribute('transform', 'translate(' + dx + ',' + dy + ')');
+        // Shift+drag means "spawn a linked task", not "move this node".
+        if (!e.shiftKey) src.setAttribute('transform', 'translate(' + dx + ',' + dy + ')');
       }
       if (line) {
         const r = src.getBoundingClientRect(), a = toSvg(r.right, r.top + r.height / 2), b = toSvg(e.clientX, e.clientY);
@@ -237,7 +258,7 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, onAnno
         target.classList.toggle('link-bad', !ok);
       }
     };
-    const onUp = () => {
+    const onUp = (e: PointerEvent) => {
       if (!active) return;
       if (dragging) {
         el.style.userSelect = '';
@@ -248,6 +269,11 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, onAnno
         src?.classList.remove('dragging');
         src?.removeAttribute('transform');
         if (drop && dragLinkRef.current && dragLinkRef.current(uid, dropUid)) S().select([uid], uid);
+        else if (!drop && e.shiftKey && dragOutRef.current) {
+          // Shift+drop on empty canvas: create a linked successor at the drop point.
+          const pt = toSvg(e.clientX, e.clientY);
+          dragOutRef.current(uid, pt.x - NW / 2, pt.y - NH / 2);
+        }
         else if (!drop && dragPosRef.current) dragPosRef.current(uid, base.x + dx, base.y + dy);
       }
       active = false; dragging = false; src = null; bad = new Set(); dx = 0; dy = 0;
@@ -263,6 +289,232 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, onAnno
       window.removeEventListener('pointerup', onUp);
     };
   }, [linkEnabled, nodeClass, svg]);
+  // ---- Draggable Start/Finish sentinels (Network) ----
+  // Live transform preview while dragging; the position is committed to netPos on release,
+  // so it persists with the project and the edge endpoints follow on the next render.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !dragPos) return; // sentinels only exist in the network view
+    let active = false, dragging = false, g: Element | null = null, sid = '';
+    let sx = 0, sy = 0, bx = 0, by = 0, dx = 0, dy = 0;
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      const s = (e.target as Element).closest('.nsent');
+      if (!s) return;
+      const r = s.querySelector('rect');
+      if (!r) return;
+      active = true; dragging = false; g = s; sid = (s as SVGElement).dataset.sid || '';
+      sx = e.clientX; sy = e.clientY; bx = +r.getAttribute('x')!; by = +r.getAttribute('y')!;
+      dx = 0; dy = 0;
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!active || !g) return;
+      if (!dragging) {
+        if (Math.hypot(e.clientX - sx, e.clientY - sy) < 5) return;
+        dragging = true;
+        el.style.userSelect = 'none';
+      }
+      e.preventDefault();
+      const s = el.querySelector('svg');
+      const k = s ? s.getBoundingClientRect().width / (+s.dataset.w! || 1) : 1;
+      dx = (e.clientX - sx) / k; dy = (e.clientY - sy) / k;
+      g.setAttribute('transform', 'translate(' + dx + ',' + dy + ')');
+    };
+    const onUp = () => {
+      if (!active) return;
+      if (dragging) {
+        el.style.userSelect = '';
+        suppressUntil.current = Date.now() + 400;
+        g?.removeAttribute('transform');
+        // netPos stores the sentinel's left edge x and vertical center y (see charts.js).
+        setNetPos(sid as 'start' | 'finish', bx + dx, by + 24 + dy);
+      }
+      active = false; dragging = false; g = null;
+    };
+    el.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      el.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [!!dragPos, svg]);
+  // ---- Edge bend handles (Network) ----
+  // Drag the midpoint handle to bend the edge (curve: vertical offset, ortho: elbow offset).
+  // The path is redrawn live; the bend is committed to netEdge on release.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !edgeBend) return;
+    let active = false, dragging = false, g: SVGGElement | null = null;
+    let handle: SVGCircleElement | null = null, path: SVGPathElement | null = null;
+    let sx = 0, sy = 0, key = '', kind = '', bend0 = 0, bend = 0, x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+    const redraw = () => {
+      if (!path || !handle) return;
+      const mx = (x1 + x2) / 2;
+      let d: string, hx: number, hy: number;
+      if (kind === 'ortho') {
+        const ex = mx + bend;
+        d = 'M' + x1 + ',' + y1 + 'H' + ex + 'V' + y2 + 'H' + (x2 - 1);
+        hx = ex; hy = (y1 + y2) / 2;
+      } else {
+        d = 'M' + x1 + ',' + y1 + 'C' + mx + ',' + (y1 + bend) + ' ' + mx + ',' + (y2 + bend) + ' ' + (x2 - 1) + ',' + y2;
+        hx = (x1 + 6 * mx + x2) / 8; hy = (y1 + y2) / 2 + bend * 0.75;
+      }
+      path.setAttribute('d', d);
+      handle.setAttribute('cx', String(hx));
+      handle.setAttribute('cy', String(hy));
+    };
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      const h = (e.target as Element).closest('.lnk-handle') as SVGCircleElement | null;
+      if (!h) return;
+      const grp = h.closest('.lnk-g') as SVGGElement | null;
+      if (!grp) return;
+      active = true; dragging = false; handle = h; g = grp;
+      key = grp.dataset.edge || ''; kind = grp.dataset.kind || 'curve';
+      bend0 = +(grp.dataset.bend || 0); bend = bend0;
+      x1 = +grp.dataset.x1!; y1 = +grp.dataset.y1!; x2 = +grp.dataset.x2!; y2 = +grp.dataset.y2!;
+      sx = e.clientX; sy = e.clientY;
+      path = grp.querySelector('.lnk:not(.lnk-hit)') as SVGPathElement | null;
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!active || !g) return;
+      if (!dragging) {
+        if (Math.hypot(e.clientX - sx, e.clientY - sy) < 3) return;
+        dragging = true;
+        el.style.userSelect = 'none';
+        handle?.setAttribute('opacity', '0.9');
+      }
+      e.preventDefault();
+      const s = el.querySelector('svg');
+      const k = s ? s.getBoundingClientRect().width / (+s.dataset.w! || 1) : 1;
+      const dd = kind === 'ortho' ? (e.clientX - sx) / k : (e.clientY - sy) / k;
+      bend = bend0 + dd;
+      redraw();
+    };
+    const onUp = () => {
+      if (!active) return;
+      if (dragging) {
+        el.style.userSelect = '';
+        suppressUntil.current = Date.now() + 400;
+        handle?.removeAttribute('opacity');
+        edgeBendRef.current?.(key, Math.round(bend));
+      }
+      active = false; dragging = false; g = null; handle = null; path = null;
+    };
+    el.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      el.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [!!edgeBend, svg]);
+  // ---- Rubber band create (Network) ----
+  // Shift+drag on empty canvas draws a rubber band; releasing it creates a task there.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !rubberCreate) return;
+    let active = false, moved = false, sx = 0, sy = 0, rect: SVGRectElement | null = null;
+    const svgEl = () => el.querySelector('svg') as SVGSVGElement | null;
+    const toSvg = (x: number, y: number) => {
+      const s = svgEl();
+      if (!s) return { x, y };
+      const r = s.getBoundingClientRect(), k = r.width / (+s.dataset.w! || 1);
+      return { x: (x - r.left) / k, y: (y - r.top) / k };
+    };
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0 || !e.shiftKey) return;
+      if ((e.target as Element).closest('g[data-uid], .anno, .nsent, .lnk-g')) return;
+      active = true; moved = false; sx = e.clientX; sy = e.clientY;
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!active) return;
+      if (!moved) {
+        if (Math.hypot(e.clientX - sx, e.clientY - sy) < 5) return;
+        moved = true;
+        el.style.userSelect = 'none';
+        const s = svgEl();
+        if (s) {
+          rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          rect.setAttribute('class', 'rubber');
+          s.appendChild(rect);
+        }
+      }
+      if (!rect) return;
+      e.preventDefault();
+      const a = toSvg(Math.min(sx, e.clientX), Math.min(sy, e.clientY));
+      const b = toSvg(Math.max(sx, e.clientX), Math.max(sy, e.clientY));
+      rect.setAttribute('x', String(a.x)); rect.setAttribute('y', String(a.y));
+      rect.setAttribute('width', String(Math.max(0, b.x - a.x)));
+      rect.setAttribute('height', String(Math.max(0, b.y - a.y)));
+    };
+    const onUp = () => {
+      if (!active) return;
+      active = false;
+      el.style.userSelect = '';
+      if (rect) {
+        const x = +rect.getAttribute('x')!, y = +rect.getAttribute('y')!;
+        const w = +rect.getAttribute('width')!, h = +rect.getAttribute('height')!;
+        rect.remove(); rect = null;
+        if (moved && w >= 24 && h >= 18) {
+          suppressUntil.current = Date.now() + 400;
+          rubberCreateRef.current?.(x, y, w, h);
+        }
+      }
+      moved = false;
+    };
+    el.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      rect?.remove();
+      el.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [!!rubberCreate, svg]);
+  // ---- Inline rename after an in-canvas create (Network) ----
+  // An input floats over the new node's title row; Enter/blur saves, Esc cancels.
+  const renameUid = useStore(s => s.renameUid);
+  useEffect(() => {
+    if (!renameUid || !nodeClass) return;
+    const el = ref.current;
+    const svgEl = el?.querySelector('svg') as SVGSVGElement | null;
+    const g = el?.querySelector('g[data-uid="' + renameUid + '"]');
+    const task = S().p.tasks.find(x => x.uid === renameUid);
+    const r0 = g?.querySelector('rect');
+    if (!el || !svgEl || !g || !task || !r0) { S().setUI({ renameUid: null }); return; }
+    const r = svgEl.getBoundingClientRect(), k = r.width / (+svgEl.dataset.w! || 1);
+    const nx = +r0.getAttribute('x')!, ny = +r0.getAttribute('y')!;
+    const input = document.createElement('input');
+    input.className = 'anno-editor';
+    input.value = task.name;
+    input.style.left = (r.left + nx * k) + 'px';
+    input.style.top = (r.top + (ny + 24) * k) + 'px';
+    input.style.width = Math.max(120, NW * k) + 'px';
+    let done = false;
+    const close = (save: boolean) => {
+      if (done) return;
+      done = true;
+      input.remove();
+      const v = input.value.trim();
+      if (save && v && v !== task.name) S().commit(p => { const x = p.tasks.find(t2 => t2.uid === renameUid); if (x) x.name = v; });
+      S().setUI({ renameUid: null });
+    };
+    input.addEventListener('blur', () => close(true));
+    input.addEventListener('keydown', ev => {
+      ev.stopPropagation();
+      if (ev.key === 'Escape') { ev.preventDefault(); close(false); }
+      else if (ev.key === 'Enter') { ev.preventDefault(); close(true); }
+    });
+    document.body.appendChild(input);
+    input.focus();
+    input.select();
+    return () => input.remove();
+  }, [renameUid, nodeClass, svg]);
   // ---- Free text box annotations (PRD M13) ----
   const annoSel = useStore(s => s.annoSel);
   const annoEdit = useStore(s => s.annoEdit);
@@ -446,6 +698,13 @@ function Canvas({ svg, nodeClass, openMode = 'drawer', onNodeContextMenu, onAnno
           onAnnoContextMenu(anno.dataset.id!, e.clientX, e.clientY);
           return;
         }
+        const eg = (e.target as Element).closest('.lnk-g') as SVGElement | null;
+        if (eg) {
+          if (!onEdgeContextMenu) return;
+          e.preventDefault();
+          onEdgeContextMenu(eg.dataset.edge!, e.clientX, e.clientY);
+          return;
+        }
         if (!onNodeContextMenu) return;
         e.preventDefault();
         const uid = uidOf(e.target);
@@ -549,6 +808,7 @@ export function NetworkView() {
   const [addMenu, setAddMenu] = useState(false);
   const [ctx, setCtx] = useState<{ uid: number | null; x: number; y: number } | null>(null);
   const [actx, setActx] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [ectx, setEctx] = useState<{ key: string; x: number; y: number } | null>(null);
   const addWrap = useRef<HTMLDivElement>(null);
   const selUid = st.sel.length ? st.sel[st.sel.length - 1] : null;
   useEffect(() => {
@@ -557,7 +817,49 @@ export function NetworkView() {
     window.addEventListener('pointerdown', close);
     return () => window.removeEventListener('pointerdown', close);
   }, [addMenu]);
+  // Create a task at a canvas position (rubber band / context menu). clientX/Y optional:
+  // without them the task lands in the middle of the visible canvas.
+  const addTaskHere = (clientX?: number, clientY?: number) => {
+    const box = document.getElementById('canvas');
+    const svgEl = box?.querySelector('svg') as SVGSVGElement | null;
+    if (!box || !svgEl) return;
+    const r = svgEl.getBoundingClientRect(), k = r.width / (+svgEl.dataset.w! || 1);
+    const x = clientX != null ? (clientX - r.left) / k : (box.scrollLeft + box.clientWidth / 2) / k;
+    const y = clientY != null ? (clientY - r.top) / k : (box.scrollTop + box.clientHeight / 2) / k;
+    const nu = addTaskAt(x - 98, y - 46); // center the 196x92 node on the spot
+    if (nu) S().setUI({ renameUid: nu });
+  };
+  // Per-edge line-style menu (right-click a dependency edge).
+  const edgeCtxItems = (key: string): CtxItem[] => {
+    const cur = (st.p.netEdge || {})[key] || {};
+    const sty: EdgeStyle = cur.style || {};
+    const mark = (on: boolean) => on ? '✓ ' : '';
+    const setStyle = (patch: Partial<EdgeStyle>) => updateNetEdge(key, { style: { ...sty, ...patch } });
+    return [
+      { label: mark(!sty.kind || sty.kind === 'curve') + t('Curved'), onClick: () => setStyle({ kind: 'curve' }) },
+      { label: mark(sty.kind === 'line') + t('Straight'), onClick: () => setStyle({ kind: 'line' }) },
+      { label: mark(sty.kind === 'ortho') + t('Right-angle'), onClick: () => setStyle({ kind: 'ortho' }) },
+      { hr: true },
+      { label: mark(!sty.width) + t('Thin (1 px)'), onClick: () => setStyle({ width: 1 }) },
+      { label: mark(sty.width === 2) + t('Medium (2 px)'), onClick: () => setStyle({ width: 2 }) },
+      { label: mark(sty.width === 3) + t('Thick (3 px)'), onClick: () => setStyle({ width: 3 }) },
+      { hr: true },
+      { label: mark(!sty.color) + t('Automatic color'), onClick: () => setStyle({ color: undefined }) },
+      { label: mark(sty.color === '#dc2626') + t('Red'), onClick: () => setStyle({ color: '#dc2626' }) },
+      { label: mark(sty.color === '#2563eb') + t('Blue'), onClick: () => setStyle({ color: '#2563eb' }) },
+      { label: mark(sty.color === '#16a34a') + t('Green'), onClick: () => setStyle({ color: '#16a34a' }) },
+      { label: mark(sty.color === '#ea580c') + t('Orange'), onClick: () => setStyle({ color: '#ea580c' }) },
+      { label: mark(sty.color === '#64748b') + t('Gray'), onClick: () => setStyle({ color: '#64748b' }) },
+      { hr: true },
+      { label: mark(!!sty.dash) + t('Dashed'), onClick: () => setStyle({ dash: true }) },
+      { label: mark(!sty.dash) + t('Solid'), onClick: () => setStyle({ dash: false }) },
+      { hr: true },
+      { label: t('Reset bend'), disabled: cur.bend == null, onClick: () => updateNetEdge(key, { bend: null }) },
+      { label: t('Reset edge style'), disabled: !cur.style, onClick: () => updateNetEdge(key, { style: null }) },
+    ];
+  };
   const ctxItems = (uid: number | null): CtxItem[] => uid == null ? [
+    { label: t('New task here'), icon: 'plus', onClick: () => addTaskHere(ctx?.x, ctx?.y) },
     { label: t('Add text box'), icon: 'note', onClick: () => addTextBoxAt('network', ctx?.x, ctx?.y) },
     { label: t('Reset layout'), icon: 'fit', onClick: () => resetNetLayout() },
   ] : [
@@ -604,12 +906,17 @@ export function NetworkView() {
       {svg ? <Canvas svg={svg} nodeClass="nnode" openMode="dialog"
         dragLink={(from, to) => addLink(from, to)}
         dragPos={(uid, x, y) => setNetPos(uid, x, y)}
+        dragOut={(from, x, y) => { const nu = addLinkedTask(from, x, y); if (nu) S().setUI({ renameUid: nu }); }}
+        rubberCreate={(x, y, w, h) => { const nu = addTaskAt(x + w / 2 - 98, y + h / 2 - 46); if (nu) S().setUI({ renameUid: nu }); }}
+        edgeBend={(key, bend) => updateNetEdge(key, { bend })}
         annoView="network"
         onNodeContextMenu={(uid, x, y) => setCtx({ uid, x, y })}
-        onAnnoContextMenu={(id, x, y) => setActx({ id, x, y })} />
+        onAnnoContextMenu={(id, x, y) => setActx({ id, x, y })}
+        onEdgeContextMenu={(key, x, y) => setEctx({ key, x, y })} />
         : <Empty title={t('Nothing to show')} text={t('Add tasks in the Gantt view first.')} />}
       {ctx && <ContextMenu x={ctx.x} y={ctx.y} items={ctxItems(ctx.uid)} onClose={() => setCtx(null)} />}
       {actx && <ContextMenu x={actx.x} y={actx.y} items={annoCtxItems(st, actx.id)} onClose={() => setActx(null)} />}
+      {ectx && <ContextMenu x={ectx.x} y={ectx.y} items={edgeCtxItems(ectx.key)} onClose={() => setEctx(null)} />}
     </div>
   );
 }

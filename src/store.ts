@@ -48,6 +48,8 @@ export interface UIState {
   wbsBox: string[];
   annoSel: string | null;
   annoEdit: string | null;
+  /** Network diagram: task uid whose name is being edited inline after an in-canvas create. */
+  renameUid: number | null;
   findOpen: boolean;
   /** UI language (PRD M17-7): zh-CN default, en-US alternative; pushed to i18n on change. */
   lang: Lang;
@@ -67,7 +69,7 @@ const UI_DEFAULTS: UIState = {
   view: 'gantt', zoom: 'week', critical: true, gridW: 600, ganttHide: 'none', drawer: window.innerWidth > 1100, netScope: 'all', netDates: false,
   netZoom: 1, wbsDepth: 99, filter: 'all', group: 'none', sort: 'id', cols: DEFAULT_COLS.slice(), showBaseline: true,
   report: 'overview', tab: 'task', timeline: true, ribbonMin: false, theme: 'light', bars: 'teal', fullYear: false, guide: true,
-  wbsBox: ['wbs'], annoSel: null, annoEdit: null, findOpen: false, lang: 'zh-CN',
+  wbsBox: ['wbs'], annoSel: null, annoEdit: null, renameUid: null, findOpen: false, lang: 'zh-CN',
   printCfg: {
     paper: 'a4', orient: 'landscape',
     header: [{ type: 'project', text: '' }, { type: 'none', text: '' }, { type: 'date', text: '' }],
