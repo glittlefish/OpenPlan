@@ -31,6 +31,7 @@ export interface UIState {
   netScope: string;
   netDates: boolean;
   netZoom: number;
+  netEdgeMode: 'curve' | 'ortho';
   wbsDepth: number;
   filter: string;
   group: string;
@@ -67,7 +68,7 @@ export interface PrintConfig {
 
 const UI_DEFAULTS: UIState = {
   view: 'gantt', zoom: 'week', critical: true, gridW: 600, ganttHide: 'none', drawer: window.innerWidth > 1100, netScope: 'all', netDates: false,
-  netZoom: 1, wbsDepth: 99, filter: 'all', group: 'none', sort: 'id', cols: DEFAULT_COLS.slice(), showBaseline: true,
+  netZoom: 1, netEdgeMode: 'curve', wbsDepth: 99, filter: 'all', group: 'none', sort: 'id', cols: DEFAULT_COLS.slice(), showBaseline: true,
   report: 'overview', tab: 'task', timeline: true, ribbonMin: false, theme: 'light', bars: 'teal', fullYear: false, guide: true,
   wbsBox: ['wbs'], annoSel: null, annoEdit: null, renameUid: null, findOpen: false, lang: 'zh-CN',
   printCfg: {
@@ -76,7 +77,7 @@ const UI_DEFAULTS: UIState = {
     footer: [{ type: 'none', text: '' }, { type: 'page', text: '' }, { type: 'none', text: '' }]
   }
 };
-const PERSISTED_UI: (keyof UIState)[] = ['view', 'zoom', 'critical', 'gridW', 'ganttHide', 'drawer', 'netDates', 'wbsDepth', 'filter', 'group', 'sort', 'cols', 'showBaseline', 'report', 'tab', 'timeline', 'theme', 'bars', 'fullYear', 'guide', 'wbsBox', 'printCfg', 'lang'];
+const PERSISTED_UI: (keyof UIState)[] = ['view', 'zoom', 'critical', 'gridW', 'ganttHide', 'drawer', 'netDates', 'netEdgeMode', 'wbsDepth', 'filter', 'group', 'sort', 'cols', 'showBaseline', 'report', 'tab', 'timeline', 'theme', 'bars', 'fullYear', 'guide', 'wbsBox', 'printCfg', 'lang'];
 
 export interface Dialog { type: string; props?: any }
 export type SaveState = 'ok' | 'full' | 'off';

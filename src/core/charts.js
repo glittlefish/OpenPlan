@@ -537,7 +537,7 @@ OP.charts = (function () {
     // attributes are inline so they win over the critical-path tint in CSS.
     function edgePath(a, b, crit, cfg, key) {
       var x1 = a.x2, y1 = a.y, x2 = b.x1, y2 = b.y, mx = (x1 + x2) / 2;
-      var sty = (cfg && cfg.style) || {}, kind = sty.kind || 'curve';
+      var sty = (cfg && cfg.style) || {}, kind = sty.kind || (o.edgeMode === 'ortho' ? 'ortho' : 'curve');
       var bend = cfg && isFinite(+cfg.bend) ? +cfg.bend : 0;
       var d, hx, hy;
       if (kind === 'line') { d = 'M' + x1 + ',' + y1 + 'L' + (x2 - 1) + ',' + y2; hx = (x1 + x2) / 2; hy = (y1 + y2) / 2; }

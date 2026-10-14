@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import OP from '../core';
 import { useApp, useStore, S } from '../store';
 import { runAction, viewSvgString } from '../lib/actions';
-import { addAnnotation, addLinkedTask, addLink, addTaskAt, addTaskNear, copyTasks, hasClip, moveSubtreeTo, pasteTasks, removeAnnotation, removeNetPos, resetNetLayout, setCustomStyle, setNetPos, updateAnnotation, updateNetEdge } from '../lib/taskOps';
+import { addAnnotation, addLinkedTask, addLink, addTaskAt, addTaskNear, copyTasks, deleteSelected, hasClip, moveSubtreeTo, pasteTasks, removeAnnotation, removeNetPos, resetNetLayout, setCustomStyle, setNetPos, updateAnnotation, updateNetEdge } from '../lib/taskOps';
 import type { EdgeStyle } from '../types';
 import Icon from '../components/Icon';
 import ContextMenu, { type CtxItem } from '../components/ContextMenu';
@@ -803,7 +803,7 @@ const Empty = ({ title, text }: { title: string; text: string }) => (
 
 export function NetworkView() {
   const st = useApp();
-  const svg = useMemo(() => viewSvgString(st), [st.p, st.s, st.netScope, st.netDates, st.critical, st.view, st.lang]);
+  const svg = useMemo(() => viewSvgString(st), [st.p, st.s, st.netScope, st.netDates, st.critical, st.netEdgeMode, st.view, st.lang]);
   const tops = st.s.rows.filter((r: any) => r.summary && r.task.level === 1);
   const [addMenu, setAddMenu] = useState(false);
   const [ctx, setCtx] = useState<{ uid: number | null; x: number; y: number } | null>(null);
@@ -835,10 +835,12 @@ export function NetworkView() {
     const sty: EdgeStyle = cur.style || {};
     const mark = (on: boolean) => on ? '✓ ' : '';
     const setStyle = (patch: Partial<EdgeStyle>) => updateNetEdge(key, { style: { ...sty, ...patch } });
+    // The effective line type: a per-edge override wins, else the global link mode.
+    const eff = sty.kind || (st.netEdgeMode === 'ortho' ? 'ortho' : 'curve');
     return [
-      { label: mark(!sty.kind || sty.kind === 'curve') + t('Curved'), onClick: () => setStyle({ kind: 'curve' }) },
+      { label: mark(eff === 'curve') + t('Curved'), onClick: () => setStyle({ kind: 'curve' }) },
       { label: mark(sty.kind === 'line') + t('Straight'), onClick: () => setStyle({ kind: 'line' }) },
-      { label: mark(sty.kind === 'ortho') + t('Right-angle'), onClick: () => setStyle({ kind: 'ortho' }) },
+      { label: mark(eff === 'ortho') + t('Right-angle'), onClick: () => setStyle({ kind: 'ortho' }) },
       { hr: true },
       { label: mark(!sty.width) + t('Thin (1 px)'), onClick: () => setStyle({ width: 1 }) },
       { label: mark(sty.width === 2) + t('Medium (2 px)'), onClick: () => setStyle({ width: 2 }) },
@@ -856,6 +858,10 @@ export function NetworkView() {
       { hr: true },
       { label: t('Reset bend'), disabled: cur.bend == null, onClick: () => updateNetEdge(key, { bend: null }) },
       { label: t('Reset edge style'), disabled: !cur.style, onClick: () => updateNetEdge(key, { style: null }) },
+      { hr: true },
+      // Global link mode: the base shape for every edge; per-edge kinds still override it.
+      { label: mark(st.netEdgeMode !== 'ortho') + t('All links curved'), onClick: () => st.setUI({ netEdgeMode: 'curve' }) },
+      { label: mark(st.netEdgeMode === 'ortho') + t('All links right-angle'), onClick: () => st.setUI({ netEdgeMode: 'ortho' }) },
     ];
   };
   const ctxItems = (uid: number | null): CtxItem[] => uid == null ? [
@@ -870,6 +876,10 @@ export function NetworkView() {
     // Copy the whole selection when the right-clicked node is part of it, else just that node.
     { label: t('Copy'), icon: 'copy', onClick: () => copyTasks(st.sel.includes(uid) ? st.sel : [uid]) },
     { label: t('Paste'), icon: 'paste', disabled: !hasClip(), onClick: () => pasteTasks(uid) },
+    { hr: true },
+    // Deletes the selection (the right-clicked node is selected on context-menu open);
+    // removeTasks also drops netPos/netEdge/annotation references to the removed tasks.
+    { label: st.sel.length > 1 ? t('Delete {n} tasks', { n: st.sel.length }) : t('Delete task'), icon: 'trash', onClick: () => deleteSelected() },
     { hr: true },
     { label: t('Reset node position'), icon: 'fit', disabled: !(uid in (st.p.netPos || {})), onClick: () => removeNetPos(uid) },
     { label: t('Reset layout'), icon: 'fit', onClick: () => resetNetLayout() },
