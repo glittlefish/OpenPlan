@@ -30,6 +30,7 @@ function onKeyDown(e: KeyboardEvent) {
   if (mod && !editing && key === 'z') { e.preventDefault(); if (e.shiftKey) st.redoAct(); else st.undoAct(); return; }
   if (mod && !editing && key === 'y') { e.preventDefault(); st.redoAct(); return; }
   if (e.key === 'Escape' && st.menu) { st.setUI({ menu: null }); return; }
+  if (e.key === 'F7') { e.preventDefault(); st.openDialog('spell'); return; }
   if (st.view !== 'gantt') return;
   if (mod && key === 'd') { e.preventDefault(); ops.fillDown(); return; }
   if (e.altKey && e.shiftKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {

@@ -75,7 +75,7 @@ export function TaskEditor({ st, t, r }: { st: Store; t: Task; r: Row }) {
 
   return (
     <>
-      <label className="field"><span>{tr('Name')}</span><Field className="inp" fk="d:name" value={t.name} onCommit={v => { set('name', v); }} /></label>
+      <label className="field"><span>{tr('Name')}</span><Field className="inp" fk="d:name" value={t.name} spellCheck onCommit={v => { set('name', v); }} /></label>
         {r.conflict && <div className="alert inline"><Icon name="alert" />{r.conflict}.</div>}
         {r.missedDeadline && <div className="alert inline"><Icon name="deadline" />{tr('Finishes {date}, after its deadline.', { date: U.fmt(r.finishDn) })}</div>}
 
@@ -228,14 +228,24 @@ export function TaskEditor({ st, t, r }: { st: Store; t: Task; r: Row }) {
         {p.customFields.length > 0 && <>
           <div className="section-title">{tr('Custom fields')}</div>
           {p.customFields.map(f => (
-            <label className="field" key={f.id}><span>{f.name}</span>
-              <Field className="inp" type={f.type === 'number' ? 'number' : 'text'} value={t.custom[f.id] == null ? '' : String(t.custom[f.id])}
-                onCommit={v => { edit(x => { x.custom[f.id] = f.type === 'number' ? (v === '' ? '' : +v) : v; }); }} />
-            </label>
+            f.type === 'text' && f.values && f.values.length ? (
+              <label className="field" key={f.id}><span>{f.name}</span>
+                <select className="inp" value={t.custom[f.id] == null ? '' : String(t.custom[f.id])}
+                  onChange={e => { edit(x => { x.custom[f.id] = e.target.value; }); }}>
+                  <option value="">{tr('(none)')}</option>
+                  {f.values.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </label>
+            ) : (
+              <label className="field" key={f.id}><span>{f.name}</span>
+                <Field className="inp" type={f.type === 'number' ? 'number' : 'text'} value={t.custom[f.id] == null ? '' : String(t.custom[f.id])}
+                  onCommit={v => { edit(x => { x.custom[f.id] = f.type === 'number' ? (v === '' ? '' : +v) : v; }); }} />
+              </label>
+            )
           ))}
         </>}
         <label className="field"><span>{tr('Notes')}</span>
-          <textarea className="inp" defaultValue={t.notes} key={uid + ':' + t.notes} onBlur={e => { if (e.target.value !== t.notes) set('notes', e.target.value); }} />
+          <textarea className="inp" spellCheck defaultValue={t.notes} key={uid + ':' + t.notes} onBlur={e => { if (e.target.value !== t.notes) set('notes', e.target.value); }} />
         </label>
     </>
   );

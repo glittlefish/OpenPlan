@@ -82,6 +82,11 @@ export function colDef(st: Store, k: string): Col | null {
   const m = /^cf:(.+)$/.exec(k);
   const f = m && st.p.customFields.find(x => x.id === m[1]);
   if (!f) return null;
+  if (f.type === 'text' && f.values && f.values.length) {
+    const options: Record<string, string> = { '': t('(none)') };
+    f.values.forEach(v => { options[v] = v; });
+    return { t: f.name, w: 120, edit: 'select', cf: f.id, options };
+  }
   return { t: f.name, w: 120, num: f.type === 'number', edit: f.type === 'number' ? 'cfnum' : 'cftext', cf: f.id };
 }
 

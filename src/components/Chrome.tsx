@@ -3,10 +3,11 @@ import OP from '../core';
 import { useApp, ask, viewName, ZOOMS, PREV_STORE } from '../store';
 import { t } from '../i18n';
 import { hasImage, loadProject, openTemplate, runAction } from '../lib/actions';
+import { gridItems } from '../lib/grid';
 import { TEMPLATES } from '../lib/templates';
 import { deleteVersion, listVersions, saveVersion, type Version } from '../lib/versions';
 import Icon from './Icon';
-import type { ViewName } from '../types';
+import type { Row, ViewName } from '../types';
 
 const U = OP.util;
 const LOGO_MARK = './assets/OpenPlan.png';
@@ -61,17 +62,30 @@ export function StatusBar() {
   const st = useApp();
   const zi = ZOOMS.indexOf(st.zoom as any);
   const setZoom = (i: number) => st.setUI({ zoom: ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, i))] });
+  const s = st.s;
+  const total = s.rows.length;
+  const visible = st.filter === 'all' && st.group === 'none' ? total : gridItems(st).filter((x: any) => !x.group).length;
+  const critical = s.rows.filter((r: Row) => r.critical && !r.summary).length;
   return (
     <footer className="statusbar">
-      <span>{t('Ready')}</span>
+      <span>{total === 1 ? t('{n} task', { n: total }) : t('{n} tasks', { n: total })}{st.sel.length ? ' · ' + t('{n} selected', { n: st.sel.length }) : ''}{visible !== total ? ' · ' + t('{n} shown', { n: visible }) : ''}</span>
       <span className="sb-sep" />
-      <span className="hide-sm">{t('New Tasks : Auto Scheduled')}</span>
+      <span className="hide-sm">{t('{n} critical', { n: critical })}</span>
       <span className="sb-sep hide-sm" />
+      <span className="hide-sm">{t('{n} days', { n: U.num(s.duration) })} · {U.fmt(s.startDn)} – {U.fmt(s.finishDn)}</span>
+      {s.cycle.length > 0 && <>
+        <span className="sb-sep" />
+        <button className="sb-warn" title={t('Dependency loop between tasks {ids}. Remove one of the links to fix the schedule.', { ids: s.cycle.join(', ') })}
+          onClick={() => st.toast(t('Dependency loop between tasks {ids}. Remove one of the links to fix the schedule.', { ids: s.cycle.join(', ') }), true)}>
+          <Icon name="alert" />{t('Dependency loop')}
+        </button>
+      </>}
       <span className="save-state">
         {st.saveState === 'ok' ? <><Icon name="check" />{t('Saved in this browser')}</>
           : <span style={{ color: 'var(--warn)' }}><Icon name="alert" />{st.saveState === 'full' ? t('Project too large for autosave — use File › Save') : t('Browser storage unavailable — use File › Save')}</span>}
       </span>
       <span className="spacer" />
+      <span className="sb-view hide-sm">{viewName(st.view)}</span>
       <div className="sb-views">
         {SB_VIEWS.map(([v, icon]) => (
           <button key={v} className={st.view === v ? 'active' : ''} title={viewName(v)} aria-label={viewName(v)} onClick={() => st.setView(v)}><Icon name={icon} /></button>

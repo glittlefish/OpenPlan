@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState, type JSX, type MouseEvent as RMouseEvent } from 'react';
+﻿import { useLayoutEffect, useMemo, useRef, useState, type JSX, type MouseEvent as RMouseEvent } from 'react';
 import OP from '../core';
 import { useApp, S, ask, focusKey, rowByUid, type Store } from '../store';
 import { t } from '../i18n';
@@ -149,7 +149,7 @@ function NotesCell({ st, r }: { st: Store; r: Row }) {
   const focusSel = () => { if (!(st.sel.length === 1 && st.sel[0] === uid)) st.select([uid], uid); };
   if (edit) return (
     <td className="notes-cell" onBlur={() => setEdit(false)}>
-      <Field className="cell notes" fk={uid + ':notes'} value={task.notes || ''} autoFocus spellCheck={false}
+      <Field className="cell notes" fk={uid + ':notes'} value={task.notes || ''} autoFocus spellCheck
         aria-label={t('Task {id} notes', { id: r.id })} onFocus={focusSel}
         onCommit={v => { commitCell('notes', uid, v); }}
         onNav={d => { setEdit(false); navFrom(uid, 'notes', d); }} />
@@ -180,7 +180,7 @@ function Cell({ st, k, r, idx }: { st: Store; k: string; r: Row; idx: any }) {
           {r.summary && st.group === 'none'
             ? <button className="caret" aria-label={t('Expand or collapse')} onClick={() => st.setUI({ collapsed: { ...st.collapsed, [uid]: !st.collapsed[uid] } })}><Icon name={st.collapsed[uid] ? 'chevR' : 'chevD'} /></button>
             : <span className="caret none" />}
-          <Field className="cell name" fk={uid + ':name'} value={task.name} placeholder={t('Task name')} spellCheck={false} aria-label={t('Task {id} name', { id: r.id })}
+          <Field className="cell name" fk={uid + ':name'} value={task.name} placeholder={t('Task name')} spellCheck aria-label={t('Task {id} name', { id: r.id })}
             onFocus={focusSel} onCommit={v => commitCell('name', uid, v)} onNav={d => navFrom(uid, 'name', d)} />
         </div>
       </td>
@@ -205,8 +205,9 @@ function Cell({ st, k, r, idx }: { st: Store; k: string; r: Row; idx: any }) {
   const fk = uid + ':' + k, label = t('Task {id} {col}', { id: r.id, col: c.t });
   if (c.edit === 'date') return <td><DateField className="cell" fk={fk} value={fieldVal} aria-label={label} onFocus={focusSel} onCommit={v => { commitCell(k, uid, v); }} /></td>;
   if (c.edit === 'select') {
-    return <td><select className="cell" data-fk={fk} value={fieldVal} aria-label={label} onFocus={focusSel} onChange={e => commitCell(k, uid, e.target.value)}>
-      {Object.entries(c.options!).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+    const selVal = c.cf ? (task.custom[c.cf] == null ? '' : String(task.custom[c.cf])) : fieldVal;
+    return <td><select className="cell" data-fk={fk} value={selVal} aria-label={label} onFocus={focusSel} onChange={e => commitCell(k, uid, e.target.value)}>
+      {Object.entries(c.options!).map(([key, optLabel]) => <option key={key} value={key}>{optLabel}</option>)}
     </select></td>;
   }
   return <td><Field className={'cell' + (c.num ? ' num' : '')} fk={fk} value={val} spellCheck={false} aria-label={label}
@@ -241,7 +242,7 @@ function Grid({ st, list, onCtx }: { st: Store; list: (Row | GroupItem)[]; onCtx
             <tr className="newrow">
               <td className="id">{st.p.tasks.length + 1}</td><td />
               <td><div className="namecell" style={{ paddingLeft: 4 }}><span className="caret none" />
-                <Field className="cell" fk="new" value="" placeholder={t('Type a new task name and press Enter…')} spellCheck={false}
+                <Field className="cell" fk="new" value="" placeholder={t('Type a new task name and press Enter…')} spellCheck
                   onCommit={v => { if (v.trim()) ops.addTaskNamed(v.trim()); return false; }} onNav={() => focusKey('new', false)} />
               </div></td>
               <td colSpan={Math.max(1, ks.length - 3)} />

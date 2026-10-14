@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type MouseEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 import OP from '../core';
 import { useStore, S, viewName } from '../store';
 import { t } from '../i18n';
@@ -113,12 +113,20 @@ function SettingsDialog() {
       <div className="field"><span>{t('Custom task fields')}</span>
         <div className="mini-list">
           {fields.map((f, k) => (
-            <div className="mini-row cf" key={f.id}>
-              <input className="inp" aria-label={t('Field name')} placeholder={t('e.g. Owner')} value={f.name} onChange={e => patchField(k, { name: e.target.value })} />
-              <select className="sel" aria-label={t('Field type')} value={f.type} onChange={e => patchField(k, { type: e.target.value as CustomField['type'] })}>
-                <option value="text">{t('Text')}</option><option value="number">{t('Number')}</option>
-              </select>
-              <button type="button" className="icon-btn" aria-label={t('Remove field')} onClick={() => setFields(fields.filter((_, i) => i !== k))}><Icon name="x" /></button>
+            <div key={f.id}>
+              <div className="mini-row cf">
+                <input className="inp" aria-label={t('Field name')} placeholder={t('e.g. Owner')} value={f.name} onChange={e => patchField(k, { name: e.target.value })} />
+                <select className="sel" aria-label={t('Field type')} value={f.type} onChange={e => patchField(k, { type: e.target.value as CustomField['type'] })}>
+                  <option value="text">{t('Text')}</option><option value="number">{t('Number')}</option>
+                </select>
+                <button type="button" className="icon-btn" aria-label={t('Remove field')} onClick={() => setFields(fields.filter((_, i) => i !== k))}><Icon name="x" /></button>
+              </div>
+              {f.type === 'text' && (
+                <label className="cf-pick"><span className="muted small">{t('Pick list (one value per line; empty = free text)')}</span>
+                  <textarea className="inp" rows={2} value={(f.values ?? []).join('\n')} aria-label={t('Pick list for {name}', { name: f.name })}
+                    onChange={e => patchField(k, { values: e.target.value.split('\n').map(v => v.trim()).filter(Boolean) })} />
+                </label>
+              )}
             </div>
           ))}
           <button type="button" className="btn ghost" onClick={() => setFields(fields.concat([{ id: 'c' + Date.now().toString(36) + fields.length, name: '', type: 'text' }]))}><Icon name="plus" />{t('Add field')}</button>
@@ -208,7 +216,77 @@ const SHORTCUTS: [ReactNode, string][] = [
   [<><kbd>Ctrl</kbd>+<kbd>S</kbd></>, 'Save to a file']
 ];
 
+// Common English misspellings for the heuristic spell scan (F7). Chinese text is skipped.
+const MISSPELLINGS: Record<string, string> = {
+  recieve: 'receive', recieved: 'received', seperate: 'separate', seperated: 'separated', occured: 'occurred',
+  accomodate: 'accommodate', acheive: 'achieve', acheived: 'achieved', adress: 'address', agressive: 'aggressive',
+  apparant: 'apparent', arguement: 'argument', basicly: 'basically', begining: 'beginning', calender: 'calendar',
+  cemetary: 'cemetery', collegue: 'colleague', comming: 'coming', commited: 'committed', concious: 'conscious',
+  definately: 'definitely', dependant: 'dependent', desicion: 'decision', dissapear: 'disappear', embarass: 'embarrass',
+  enviroment: 'environment', existance: 'existence', familar: 'familiar', finaly: 'finally', foriegn: 'foreign',
+  goverment: 'government', gaurd: 'guard', happend: 'happened', harrass: 'harass', immediatly: 'immediately',
+  independant: 'independent', knowlege: 'knowledge', liason: 'liaison', maintainance: 'maintenance', managment: 'management',
+  neccessary: 'necessary', noticable: 'noticeable', occassion: 'occasion', occurance: 'occurrence', persistant: 'persistent',
+  posession: 'possession', prefered: 'preferred', propogate: 'propagate', publically: 'publicly', realy: 'really',
+  refered: 'referred', relevent: 'relevant', responsable: 'responsible', rythm: 'rhythm', schedual: 'schedule',
+  succesful: 'successful', supress: 'suppress', suprise: 'surprise', tommorow: 'tomorrow', untill: 'until',
+  wierd: 'weird', writting: 'writing'
+};
+
+function SpellDialog() {
+  const st = useStore(), p = st.p;
+  const issues = useMemo(() => {
+    const out: { where: string; text: string; word: string; fix: string }[] = [];
+    const scan = (where: string, text: string) => {
+      const s = String(text || '');
+      s.replace(/[\u4e00-\u9fff]/g, ' ').split(/[^A-Za-z']+/).forEach(w => {
+        const fix = MISSPELLINGS[w.toLowerCase()];
+        if (fix) out.push({ where, text: s.slice(0, 60), word: w, fix });
+      });
+    };
+    scan(t('Project name'), p.name);
+    p.tasks.forEach(task => { scan(t('Task {id}', { id: task.uid }) + ' — ' + t('Name'), task.name); scan(t('Task {id}', { id: task.uid }) + ' — ' + t('Notes'), task.notes); });
+    (p.annotations || []).forEach((a, i) => scan(t('Text box {n}', { n: i + 1 }), a.text));
+    return out;
+  }, [p, st.lang]);
+  return (
+    <Modal title={t('Spell check')} cancelLabel={t('Close')} noOk>
+      <p className="muted">{t('Chinese text is not checked. English words are compared against a list of common misspellings; text fields also use your browser’s built-in spell check (underline → right-click for suggestions).')}</p>
+      {issues.length ? (
+        <table className="data"><thead><tr><th>{t('Where')}</th><th>{t('Text')}</th><th>{t('Word')}</th><th>{t('Suggestion')}</th></tr></thead>
+          <tbody>{issues.map((it, i) => <tr key={i}><td>{it.where}</td><td>{it.text}</td><td><code>{it.word}</code></td><td><code>{it.fix}</code></td></tr>)}</tbody></table>
+      ) : <p><Icon name="check" /> {t('No suspected misspellings found.')}</p>}
+    </Modal>
+  );
+}
+
 function AboutDialog() {
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const hit = (...parts: string[]) => !needle || parts.join(' ').toLowerCase().includes(needle);
+  const shortcuts = SHORTCUTS.filter(([, action]) => hit(String(action)));
+  const glossary = ([
+    ['WBS', 'Work Breakdown Structure — the task tree: summary tasks and their leaf tasks.'],
+    ['Critical path', 'The chain of tasks that sets the project finish; delaying any of them delays the project.'],
+    ['Total slack', 'How many days a task can move before it delays the project (or a constraint).'],
+    ['Free slack', 'How many days a task can move before it delays its next successor.'],
+    ['Predecessor', 'A task that must finish (or start) before this one; link types FS, SS, FF, SF with optional lag.'],
+    ['Milestone', 'A zero-duration task marking a date.'],
+    ['Summary task', 'A parent task; its dates and cost roll up from its children and cannot be edited directly.'],
+    ['Baseline', 'A saved copy of the plan used to compare progress against the original schedule and cost.'],
+    ['Leveling', 'Delaying tasks automatically so overallocated resources never work more than their max units.'],
+    ['Earned value', 'Progress in money terms: BCWS (planned), BCWP (earned), ACWP (actual), with SPI and CPI indices.'],
+    ['Constraint', 'A scheduling rule such as “Start no earlier than” a date.'],
+    ['Deadline', 'A target date that warns (without rescheduling) when a task finishes late.']
+  ] as [string, string][]).filter(([term, def]) => hit(term, def));
+  const views = ([
+    ['Gantt chart', 'Drag bars to move tasks, drag the right edge to resize, drag onto another bar to link. Ctrl+wheel zooms, plain wheel scrolls, drag empty space to pan.'],
+    ['Task board', 'Kanban by progress status; drag cards between columns.'],
+    ['Network diagram', 'Drag from a node edge onto another node to link (FS). Drag a node to reposition; Ctrl+wheel zooms; double-click opens task details.'],
+    ['WBS chart', 'Drag nodes to restructure the tree, right-click for insert/copy/paste, double-click to edit. Box content and styles are configurable.'],
+    ['Resource views', 'Sheet, team chart and usage table with overallocation highlighting.'],
+    ['Reports & budget', 'Dashboards, earned value and cost reports; set a baseline first for variance reports.']
+  ] as [string, string][]).filter(([name, desc]) => hit(name, desc));
   return (
     <Modal title={t('About OpenPlan')} cancelLabel={t('Close')} noOk>
       <div className="about-head">
@@ -216,10 +294,26 @@ function AboutDialog() {
         <div><h3>OpenPlan</h3><span className="muted">{t('Version {version} · Free, browser-based project planning', { version })}</span></div>
       </div>
       <p>{t('Plan with a WBS, Gantt chart, critical path, network diagram, resources, leveling, baselines, tracking, earned value, budget and reports. Your project is saved automatically in this browser only; use')} <b>{t('File › Save')}</b> {t('to keep a copy as an .openplan file.')}</p>
-      <section className="about-sec">
-        <h4>{t('Keyboard shortcuts')}</h4>
-        <table className="about-keys"><tbody>{SHORTCUTS.map(([keys, action]) => <tr key={action}><td>{keys}</td><td>{t(action)}</td></tr>)}</tbody></table>
-      </section>
+      <input className="inp help-search" value={q} onChange={e => setQ(e.target.value)} placeholder={t('Search help (shortcuts, views, glossary)…')} aria-label={t('Search help')} />
+      {shortcuts.length > 0 && (
+        <section className="about-sec">
+          <h4>{t('Keyboard shortcuts')}</h4>
+          <table className="about-keys"><tbody>{shortcuts.map(([keys, action]) => <tr key={String(action)}><td>{keys}</td><td>{t(action)}</td></tr>)}</tbody></table>
+        </section>
+      )}
+      {views.length > 0 && (
+        <section className="about-sec">
+          <h4>{t('Views')}</h4>
+          <dl className="about-tips">{views.map(([name, desc]) => <Fragment key={name}><dt>{t(name)}</dt><dd>{t(desc)}</dd></Fragment>)}</dl>
+        </section>
+      )}
+      {glossary.length > 0 && (
+        <section className="about-sec">
+          <h4>{t('Glossary')}</h4>
+          <dl className="about-tips">{glossary.map(([term, def]) => <Fragment key={term}><dt>{t(term)}</dt><dd>{t(def)}</dd></Fragment>)}</dl>
+        </section>
+      )}
+      {needle && shortcuts.length + views.length + glossary.length === 0 && <p className="muted">{t('No help entries match “{q}”.', { q })}</p>}
       <section className="about-sec">
         <h4>{t('Tips')}</h4>
         <dl className="about-tips">
@@ -845,6 +939,7 @@ export default function DialogHost() {
     case 'task': return <TaskDialog uid={dialog.props.uid} />;
     case 'batchedit': return <BatchEditDialog uids={dialog.props.uids} />;
     case 'about': return <AboutDialog />;
+    case 'spell': return <SpellDialog />;
     case 'import': return <ImportDialog />;
     case 'share': return <ShareDialog />;
     case 'confirm': return <ConfirmDialog {...dialog.props} />;

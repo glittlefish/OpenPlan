@@ -250,7 +250,9 @@ OP.model = (function () {
     p.holidays = arr(p.holidays).map(str);
     p.calendar = normalizeCalendar(p.calendar, p.holidays);
     p.customFields = arr(p.customFields).filter(isObj).map(function (f) {
-      return { id: str(f.id), name: str(f.name), type: f.type === 'number' ? 'number' : 'text' };
+      var out = { id: str(f.id), name: str(f.name), type: f.type === 'number' ? 'number' : 'text' };
+      if (out.type === 'text') out.values = arr(f.values).map(str).filter(function (v) { return v; });
+      return out;
     });
     p.tasks = arr(p.tasks).filter(isObj);
     p.resources = arr(p.resources).filter(isObj);

@@ -47,7 +47,7 @@ export interface Resource {
   reportsTo: number | null;
 }
 
-export interface CustomField { id: string; name: string; type: 'text' | 'number' }
+export interface CustomField { id: string; name: string; type: 'text' | 'number'; values?: string[] }
 
 /** Free-form text box on the WBS/Network canvas (PRD M13). */
 export interface Annotation {

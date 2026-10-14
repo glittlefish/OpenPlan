@@ -314,7 +314,12 @@ function ViewTab({ st }: { st: Store }) {
         <Check label={t('Details')} checked={st.drawer} onChange={v => st.setUI({ drawer: v })} />
       </Stack>
     </Group>
-    <Group label={t('Window')}><Big icon={st.theme === 'dark' ? 'sun' : 'moon'} label={<>{t('Dark')}<br />{t('Mode')}</>} on={st.theme === 'dark'} onClick={() => st.setUI({ theme: st.theme === 'dark' ? 'light' : 'dark' })} /></Group>
+    <Group label={t('Window')}>
+      <Stack>
+        <Small icon="check" label={t('Spell Check')} title={t('Check English text for common misspellings (F7)')} onClick={() => st.openDialog('spell')} />
+      </Stack>
+      <Big icon={st.theme === 'dark' ? 'sun' : 'moon'} label={<>{t('Dark')}<br />{t('Mode')}</>} on={st.theme === 'dark'} onClick={() => st.setUI({ theme: st.theme === 'dark' ? 'light' : 'dark' })} />
+    </Group>
   </>;
 }
 
