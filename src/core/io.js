@@ -1,4 +1,5 @@
 import OP from './core.js';
+import { t } from '../i18n';
 /* File formats: OpenPlan JSON, CSV, and SVG/PNG image export. */
 OP.io = (function () {
   var U = OP.util, M = OP.model;
@@ -7,7 +8,7 @@ OP.io = (function () {
 
   function fromJSON(text) {
     var p = JSON.parse(text);
-    if (!p || !Array.isArray(p.tasks) || !Array.isArray(p.resources)) throw new Error('Not an OpenPlan project file.');
+    if (!p || !Array.isArray(p.tasks) || !Array.isArray(p.resources)) throw new Error(t('Not an OpenPlan project file.'));
     return M.normalize(p);
   }
 
@@ -20,9 +21,14 @@ OP.io = (function () {
       if (!same) { same = { id: 'c' + Date.now().toString(36) + p.customFields.length, name: f.name, type: f.type }; p.customFields.push(same); }
       cfMap[f.id] = same.id;
     });
-    var newHol = sub.holidays.filter(function (h) { return p.holidays.indexOf(h) < 0; }).length;
-    if (newHol) warnings.push(newHol + ' holiday' + (newHol > 1 ? 's were' : ' was') + ' not added to this calendar');
-    if (sub.baseline) warnings.push('its baseline was not copied');
+    // Carry the subproject's dated calendar exceptions over (holidays etc.); local entries win.
+    var cal = p.calendar || (p.calendar = { workingDays: [1, 2, 3, 4, 5], workTimes: [{ start: '08:00', end: '12:00' }, { start: '13:00', end: '17:00' }], exceptions: [] });
+    var haveExc = {};
+    (cal.exceptions || []).forEach(function (e) { haveExc[e.date] = true; });
+    ((sub.calendar && sub.calendar.exceptions) || []).forEach(function (e) {
+      if (e && e.date && !haveExc[e.date]) { haveExc[e.date] = true; (cal.exceptions = cal.exceptions || []).push({ date: e.date, working: !!e.working, reason: String(e.reason || '') }); }
+    });
+    if (sub.baseline) warnings.push(t('its baseline was not copied'));
     sub.resources.forEach(function (r) {
       var same = p.resources.filter(function (x) { return x.name && x.name === r.name; })[0];
       if (same) { resMap[r.uid] = same.uid; return; }
@@ -33,7 +39,7 @@ OP.io = (function () {
       p.resources.push(copy);
     });
     copies.forEach(function (c) { c.reportsTo = c.reportsTo != null && resMap[c.reportsTo] ? resMap[c.reportsTo] : null; });
-    var head = M.newTask(p, { name: sub.name || 'Subproject', level: 1, notes: 'Inserted from ' + (sub.name || 'another project') });
+    var head = M.newTask(p, { name: sub.name || t('Subproject'), level: 1, notes: t('Inserted from {name}', { name: sub.name || t('another project') }) });
     p.tasks.push(head);
     sub.tasks.forEach(function (t) { taskMap[t.uid] = p.nextUid++; });
     sub.tasks.forEach(function (t) {
@@ -110,10 +116,10 @@ OP.io = (function () {
       ctx.drawImage(img, 0, 0, w, h);
       c.toBlob(function (b) {
         if (b) U.download(name + '.png', b);
-        else OP.notify('The chart is too large for a PNG. Try the SVG export instead.');
+        else OP.notify(t('The chart is too large for a PNG. Try the SVG export instead.'));
       }, 'image/png');
     };
-    img.onerror = function () { OP.notify('Could not create the image. Try the SVG export instead.'); };
+    img.onerror = function () { notify(t('Could not create the image. Try the SVG export instead.'), true); };
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(standaloneSVG(svg));
   }
 
@@ -132,7 +138,32 @@ OP.io = (function () {
     setTimeout(function () { w.print(); }, 300);
   }
 
+  // Copy the chart to the clipboard as a high-resolution PNG (PRD M18-4); falls back
+  // to a download when the clipboard API is unavailable.
+  function copyPNG(svg, name, notify) {
+    var w = +svg.getAttribute('width'), h = +svg.getAttribute('height');
+    var scale = Math.min(2, 16000 / Math.max(w, h), Math.sqrt(16e6 / (w * h)));
+    var img = new Image();
+    img.onload = function () {
+      var c = document.createElement('canvas');
+      c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+      var ctx = c.getContext('2d');
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, 0, 0, w, h);
+      c.toBlob(function (b) {
+        if (!b) { notify(t('Could not create the picture. Try the SVG export instead.'), true); return; }
+        if (navigator.clipboard && window.ClipboardItem) {
+          navigator.clipboard.write([new ClipboardItem({ 'image/png': b })])
+            .then(function () { notify(t('Picture copied to the clipboard')); })
+            .catch(function () { U.download(name + '.png', b); notify(t('Clipboard is unavailable; the PNG was downloaded instead.')); });
+        } else { U.download(name + '.png', b); notify(t('Clipboard is unavailable; the PNG was downloaded instead.')); }
+      }, 'image/png');
+    };
+    img.onerror = function () { OP.notify(t('Could not create the picture. Try the SVG export instead.')); };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(standaloneSVG(svg));
+  }
+
   return {
-    toJSON: toJSON, fromJSON: fromJSON, taskTable: taskTable, toCSV: toCSV, insertProject: insertProject, exportSVG: exportSVG, exportPNG: exportPNG, printSVG: printSVG
+    toJSON: toJSON, fromJSON: fromJSON, taskTable: taskTable, toCSV: toCSV, insertProject: insertProject, exportSVG: exportSVG, exportPNG: exportPNG, printSVG: printSVG, copyPNG: copyPNG, standaloneSVG: standaloneSVG
   };
 })();

@@ -26,6 +26,19 @@ export interface Task {
   levelDelay: number;
   priority: number;
   custom: Record<string, string | number>;
+  /** Manual per-task box style override for WBS/Network charts; beats all box style rules. */
+  customStyle?: BoxStyle | null;
+}
+
+/** Network diagram: per-edge line style override (PRD follow-up). */
+export interface EdgeStyle {
+  /** 'curve' (default bezier), 'line' (straight) or 'ortho' (right-angle elbow). */
+  kind?: 'curve' | 'line' | 'ortho';
+  /** 1 | 2 | 3 px. */
+  width?: number;
+  /** Custom stroke color (hex); empty/undefined = automatic (default/critical) color. */
+  color?: string;
+  dash?: boolean;
 }
 
 export interface Resource {
@@ -45,7 +58,63 @@ export interface Resource {
   reportsTo: number | null;
 }
 
-export interface CustomField { id: string; name: string; type: 'text' | 'number' }
+export interface CustomField { id: string; name: string; type: 'text' | 'number'; values?: string[] }
+
+/** Free-form text box on the WBS/Network canvas (PRD M13). */
+export interface Annotation {
+  id: string;
+  view: 'wbs' | 'network';                    // only shown on its own view
+  mode: 'free' | 'task' | 'group';             // free: absolute; task: follows a task; group: wraps a set of tasks
+  text: string;
+  x: number; y: number; w: number; h: number;  // free: absolute SVG position and size
+  dx: number; dy: number;                      // task: offset from the bound task's box
+  taskUid: number | null;                       // task: the bound task
+  uids: number[];                               // group: the wrapped tasks
+}
+
+/** Visual style attributes for chart boxes (WBS / Network). Unset keys fall through to lower-priority rules. */
+export interface BoxStyle {
+  borderColor?: string;                       // hex color or CSS var token
+  borderWidth?: 1 | 2 | 3;
+  borderDash?: 'solid' | 'dashed' | 'dotted';
+  fillColor?: string;                        // hex color or 'transparent'
+  textColor?: string;
+  bold?: boolean;
+  shadowColor?: string;                      // empty/undefined = no shadow
+  shadowX?: number;                          // -4..4
+  shadowY?: number;
+}
+
+/** One condition of a box style rule; all conditions of a rule combine with AND. */
+export interface BoxCondition { field: string; op: string; value: any }
+
+/** Rule-driven box styling (PRD M14). Array order = priority (ascending evaluation). */
+export interface BoxRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  builtin: boolean;                          // built-ins can be disabled but not deleted
+  scope: 'partial' | 'full';                  // partial fills only set attributes; full overrides wholesale
+  views: ('wbs' | 'network')[];               // which charts the rule applies to
+  conditions: BoxCondition[];
+  style: BoxStyle;
+}
+
+export interface WorkTimeRange { start: string; end: string }
+export interface CalendarException {
+  /** ISO date (no time). */
+  date: string;
+  /** true = working that day (even on a weekend); false = day off (even on a weekday). */
+  working: boolean;
+  reason: string;
+}
+export interface ProjectCalendar {
+  /** Working weekdays, 0 = Sunday … 6 = Saturday. Default [1,2,3,4,5]. */
+  workingDays: number[];
+  /** Daily work time ranges, e.g. 08:00-12:00 + 13:00-17:00. */
+  workTimes: WorkTimeRange[];
+  exceptions: CalendarException[];
+}
 
 export interface Project {
   version: number;
@@ -59,12 +128,23 @@ export interface Project {
   budget: number;
   currency: string;
   hoursPerDay: number;
+  /** Legacy holiday list (pre-calendar projects); migrated into calendar.exceptions on load. */
   holidays: string[];
+  /** Working-time calendar (PRD M8): weekly working days, daily work time ranges, and dated exceptions. */
+  calendar?: ProjectCalendar;
   customFields: CustomField[];
   baseline: { savedAt: string; tasks: Record<number, any> } | null;
   nextUid: number;
   tasks: Task[];
   resources: Resource[];
+  /** Network diagram: manual node positions (uid or 'start'/'finish' sentinel -> SVG coordinates). */
+  netPos?: Partial<Record<number | 'start' | 'finish', { x: number; y: number }>>;
+  /** Network diagram: per-edge overrides, keyed "fromUid-toUid" ('start'/'finish' for sentinels). */
+  netEdge?: Record<string, { bend?: number; style?: EdgeStyle }>;
+  /** WBS/Network chart: free text box annotations (PRD M13). */
+  annotations?: Annotation[];
+  /** WBS/Network chart: box style rules, ordered by priority (first entries evaluated first). */
+  boxRules?: BoxRule[];
 }
 
 /* Computed schedule rows and results come from the JavaScript engine (core.js). */

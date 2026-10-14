@@ -3,6 +3,8 @@
  * Scheduling uses the critical path method: a forward pass for early dates,
  * a backward pass for late dates, then total/free slack and the critical path.
  */
+import { t as tr } from '../i18n';
+
 const OP = {};
 
 /* ---------- utilities ---------- */
@@ -12,6 +14,10 @@ OP.util = (function () {
   var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   var fullYear = false;
   function setFullYear(on) { fullYear = !!on; }
+  // Locale for date/money formatting (PRD M17-7); kept in sync with the UI language by the store.
+  var lang = 'zh-CN';
+  function setLang(l) { if (l === 'zh-CN' || l === 'en-US') lang = l; }
+  function getLang() { return lang; }
 
   // Dates are handled as whole day numbers (days since 1970-01-01, UTC) to avoid timezone drift.
   function parseDate(s) {
@@ -27,11 +33,13 @@ OP.util = (function () {
     if (dn == null) return '';
     var d = toDate(dn);
     var y = String(d.getUTCFullYear());
+    if (lang === 'zh-CN') return d.getUTCFullYear() + '年' + (d.getUTCMonth() + 1) + '月' + d.getUTCDate() + '日';
     return d.getUTCDate() + ' ' + MONTHS[d.getUTCMonth()] + ' ' + (fullYear ? y : y.slice(2));
   }
   function fmtLong(dn) {
     if (dn == null) return '';
     var d = toDate(dn);
+    if (lang === 'zh-CN') return d.getUTCFullYear() + '年' + (d.getUTCMonth() + 1) + '月' + d.getUTCDate() + '日';
     return DAYS[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + MONTHS[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
   }
   function todayDn() {
@@ -39,10 +47,10 @@ OP.util = (function () {
     return Math.round(Date.UTC(n.getFullYear(), n.getMonth(), n.getDate()) / 864e5);
   }
   function money(v, cur) {
-    return (cur ? cur + ' ' : '') + Math.round(v || 0).toLocaleString();
+    return (cur ? cur + ' ' : '') + Math.round(v || 0).toLocaleString(lang === 'zh-CN' ? 'zh-CN' : 'en-US');
   }
   function num(v, dp) {
-    return (+v || 0).toLocaleString(undefined, { maximumFractionDigits: dp == null ? 1 : dp });
+    return (+v || 0).toLocaleString(lang === 'zh-CN' ? 'zh-CN' : 'en-US', { maximumFractionDigits: dp == null ? 1 : dp });
   }
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -50,6 +58,12 @@ OP.util = (function () {
     });
   }
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  // Locale-aware short labels for chart axes (PRD M17-7).
+  function monName(mon) { return lang === 'zh-CN' ? (mon + 1) + '月' : MONTHS[mon]; }
+  function monYear(mon, yr) { return lang === 'zh-CN' ? yr + '年' + (mon + 1) + '月' : MONTHS[mon] + ' ' + yr; }
+  function monYearShort(mon, yr) { return lang === 'zh-CN' ? String(yr).slice(2) + '年' + (mon + 1) + '月' : MONTHS[mon] + ' ' + String(yr).slice(2); }
+  function dayMon(day, mon) { return lang === 'zh-CN' ? (mon + 1) + '月' + day + '日' : day + ' ' + MONTHS[mon]; }
+  function wdInitial(wd) { return lang === 'zh-CN' ? '日一二三四五六'[wd] : 'SMTWTFS'[wd]; }
   function download(name, content, type) {
     var blob = content instanceof Blob ? content : new Blob([content], { type: type || 'text/plain' });
     var a = document.createElement('a');
@@ -63,17 +77,29 @@ OP.util = (function () {
 
   return {
     MONTHS: MONTHS, DAYS: DAYS, parseDate: parseDate, toDate: toDate, iso: iso, weekday: weekday,
-    fmt: fmt, fmtLong: fmtLong, setFullYear: setFullYear, todayDn: todayDn, money: money, num: num, esc: esc, clone: clone,
+    fmt: fmt, fmtLong: fmtLong, setFullYear: setFullYear, setLang: setLang, getLang: getLang, todayDn: todayDn, money: money, num: num, esc: esc, clone: clone,
+    monName: monName, monYear: monYear, monYearShort: monYearShort, dayMon: dayMon, wdInitial: wdInitial,
     download: download, slug: slug
   };
 })();
 
-/* ---------- working-day calendar (Mon-Fri, minus holidays) ---------- */
+/* ---------- working-day calendar (project working days, plus dated exceptions) ---------- */
 
-OP.Calendar = function (startDn, holidays) {
-  var hol = {};
-  (holidays || []).forEach(function (h) { var d = OP.util.parseDate(h); if (d != null) hol[d] = true; });
-  this.isWorking = function (dn) { var w = OP.util.weekday(dn); return w !== 0 && w !== 6 && !hol[dn]; };
+// cal: { workingDays: [0..6], exceptions: [{ date: 'YYYY-MM-DD', working: bool }] }
+// An exception wins over the weekly rule; without one, a day works when its weekday is listed.
+OP.Calendar = function (startDn, cal) {
+  var days = (cal && Array.isArray(cal.workingDays)) ? cal.workingDays : [1, 2, 3, 4, 5];
+  var week = {};
+  days.forEach(function (d) { if (d >= 0 && d <= 6) week[d] = true; });
+  var exc = {};
+  (cal && cal.exceptions || []).forEach(function (e) {
+    var d = OP.util.parseDate(e && e.date);
+    if (d != null) exc[d] = !!e.working;
+  });
+  this.isWorking = function (dn) {
+    if (dn in exc) return exc[dn];
+    return !!week[OP.util.weekday(dn)];
+  };
   var first = startDn;
   var guard = 0;
   while (!this.isWorking(first) && guard++ < 3660) first++;
@@ -132,12 +158,28 @@ OP.model = (function () {
       currency: 'Rs.',
       hoursPerDay: 8,
       holidays: [],
+      calendar: { workingDays: [1, 2, 3, 4, 5], workTimes: [{ start: '08:00', end: '12:00' }, { start: '13:00', end: '17:00' }], exceptions: [] },
       customFields: [],
       baseline: null,
       nextUid: 1,
       tasks: [],
-      resources: []
+      resources: [],
+      annotations: [],
+      boxRules: builtinBoxRules()
     };
+  }
+
+  // Box style rules (PRD M14): two built-ins reproduce the classic look —
+  // critical tasks get the red border in the network diagram, everything else stays default.
+  // They are partial (border only) and scoped to the network chart so the WBS default look is unchanged.
+  function builtinBoxRules() {
+    return [
+      { id: 'b-critical', name: 'Critical tasks', enabled: true, builtin: true, scope: 'partial', views: ['network'],
+        conditions: [{ field: 'isCritical', op: 'eq', value: true }],
+        style: { borderColor: 'var(--critical)', borderWidth: 2 } },
+      { id: 'b-normal', name: 'Non-critical tasks', enabled: true, builtin: true, scope: 'partial', views: ['network'],
+        conditions: [{ field: 'isCritical', op: 'eq', value: false }], style: {} }
+    ];
   }
 
   var TASK_DEFAULTS = {
@@ -167,6 +209,37 @@ OP.model = (function () {
     return r;
   }
 
+  // Working-time calendar (PRD M8): sanitize the project calendar and migrate legacy
+  // holiday lists (pre-calendar files) into dated exceptions on first load.
+  function normalizeCalendar(cal, legacyHolidays) {
+    var fresh = cal == null || typeof cal !== 'object';
+    var c = fresh ? { workingDays: [1, 2, 3, 4, 5], workTimes: [{ start: '08:00', end: '12:00' }, { start: '13:00', end: '17:00' }], exceptions: [] } : cal;
+    var days = arr(c.workingDays).map(function (d) { return Math.floor(num(d, -1)); })
+      .filter(function (d) { return d >= 0 && d <= 6; });
+    days = days.filter(function (d, i) { return days.indexOf(d) === i; }).sort(function (a, b) { return a - b; });
+    c.workingDays = days.length ? days : [1, 2, 3, 4, 5];
+    var okTime = function (s) { return /^\d{1,2}:\d{2}$/.test(String(s)) && s.split(':').length === 2 && +s.split(':')[0] < 24 && +s.split(':')[1] < 60; };
+    c.workTimes = arr(c.workTimes).filter(isObj).map(function (w) { return { start: str(w.start), end: str(w.end) }; })
+      .filter(function (w) { return okTime(w.start) && okTime(w.end) && w.end > w.start; });
+    if (!c.workTimes.length) c.workTimes = [{ start: '08:00', end: '12:00' }, { start: '13:00', end: '17:00' }];
+    var seen = {};
+    c.exceptions = arr(c.exceptions).filter(isObj).map(function (e) {
+      return { date: str(e.date), working: !!e.working, reason: str(e.reason) };
+    }).filter(function (e) { return OP.util.parseDate(e.date) != null && !seen[e.date] && (seen[e.date] = true); })
+      .sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    if (fresh) {
+      // One-time migration: legacy holidays become non-working exceptions.
+      var have = {};
+      c.exceptions.forEach(function (e) { have[e.date] = true; });
+      (legacyHolidays || []).forEach(function (h) {
+        var d = str(h);
+        if (OP.util.parseDate(d) != null && !have[d]) { have[d] = true; c.exceptions.push({ date: d, working: false, reason: 'Holiday' }); }
+      });
+      c.exceptions.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    }
+    return c;
+  }
+
   // Bring files from older versions up to date, fill missing fields and coerce every value to its expected type.
   function normalize(p) {
     var base = blank();
@@ -175,8 +248,11 @@ OP.model = (function () {
     p.budget = Math.max(0, num(p.budget, 0));
     p.hoursPerDay = Math.max(1, Math.min(24, num(p.hoursPerDay, 8)));
     p.holidays = arr(p.holidays).map(str);
+    p.calendar = normalizeCalendar(p.calendar, p.holidays);
     p.customFields = arr(p.customFields).filter(isObj).map(function (f) {
-      return { id: str(f.id), name: str(f.name), type: f.type === 'number' ? 'number' : 'text' };
+      var out = { id: str(f.id), name: str(f.name), type: f.type === 'number' ? 'number' : 'text' };
+      if (out.type === 'text') out.values = arr(f.values).map(str).filter(function (v) { return v; });
+      return out;
     });
     p.tasks = arr(p.tasks).filter(isObj);
     p.resources = arr(p.resources).filter(isObj);
@@ -220,6 +296,7 @@ OP.model = (function () {
         if (typeof v === 'string' || (typeof v === 'number' && isFinite(v))) custom[c] = v;
       }
       t.custom = custom;
+      t.customStyle = isObj(t.customStyle) ? sanitizeBoxStyle(t.customStyle) : null;
     });
     p.resources.forEach(function (r) {
       fill(r, RES_DEFAULTS);
@@ -236,9 +313,96 @@ OP.model = (function () {
     });
     if (!isObj(p.baseline) || !isObj(p.baseline.tasks)) p.baseline = null;
     else p.baseline.savedAt = str(p.baseline.savedAt);
+    // Network diagram: manual node positions — keep only valid entries for existing tasks,
+    // plus the draggable Start/Finish sentinels (reserved keys 'start' / 'finish').
+    var np = isObj(p.netPos) ? p.netPos : {};
+    var good = {};
+    p.tasks.forEach(function (t) {
+      var q = np[t.uid];
+      if (isObj(q) && isFinite(+q.x) && isFinite(+q.y)) good[t.uid] = { x: +q.x, y: +q.y };
+    });
+    ['start', 'finish'].forEach(function (k) {
+      var q = np[k];
+      if (isObj(q) && isFinite(+q.x) && isFinite(+q.y)) good[k] = { x: Math.max(0, +q.x), y: Math.max(0, +q.y) };
+    });
+    p.netPos = good;
+    // Network diagram: per-edge bend / line-style overrides, keyed "from-to" (uid or sentinel).
+    var ne = isObj(p.netEdge) ? p.netEdge : {};
+    var neGood = {};
+    var uidOk = {}; p.tasks.forEach(function (t) { uidOk[t.uid] = true; });
+    Object.keys(ne).slice(0, 2000).forEach(function (k) {
+      var v = ne[k];
+      if (!isObj(v) || typeof k !== 'string' || !k.length) return;
+      // Keys are "from-to"; each side must be an existing task uid or a sentinel.
+      if (!k.split('-').every(function (u) { return u === 'start' || u === 'finish' || uidOk[u]; })) return;
+      var out = {};
+      if (isFinite(+v.bend)) out.bend = +v.bend;
+      if (isObj(v.style)) {
+        var s2 = {};
+        if (['curve', 'line', 'ortho'].indexOf(v.style.kind) >= 0) s2.kind = v.style.kind;
+        if ([1, 2, 3].indexOf(+v.style.width) >= 0) s2.width = +v.style.width;
+        if (typeof v.style.color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(v.style.color)) s2.color = v.style.color;
+        if (v.style.dash) s2.dash = true;
+        if (Object.keys(s2).length) out.style = s2;
+      }
+      if (Object.keys(out).length) neGood[k] = out;
+    });
+    p.netEdge = neGood;
+    // Free text boxes (PRD M13): sanitize and keep only entries that can still render.
+    p.annotations = arr(p.annotations).filter(isObj).slice(0, 200).map(function (a) {
+      return {
+        id: str(a.id) || 'a' + Math.random().toString(36).slice(2, 8),
+        view: a.view === 'network' ? 'network' : 'wbs',
+        mode: a.mode === 'task' || a.mode === 'group' ? a.mode : 'free',
+        text: str(a.text),
+        x: Math.max(0, num(a.x, 0)), y: Math.max(0, num(a.y, 0)),
+        w: Math.max(40, num(a.w, 160)), h: Math.max(24, num(a.h, 60)),
+        dx: num(a.dx, 0), dy: num(a.dy, 0),
+        taskUid: uidOf({ uid: a.taskUid }) || null,
+        uids: arr(a.uids).map(Number).filter(function (u) { return u > 0 && u === Math.floor(u); })
+      };
+    });
+    // Box style rules (PRD M14): sanitize, cap at 50, keep the built-ins present for older files.
+    p.boxRules = arr(p.boxRules).filter(isObj).slice(0, 50).map(sanitizeBoxRule);
+    var haveB = {};
+    p.boxRules.forEach(function (r) { if (r.builtin) haveB[r.id] = true; });
+    builtinBoxRules().forEach(function (b) { if (!haveB[b.id]) p.boxRules.unshift(b); });
     p.version = 2;
     normalizeLevels(p);
     return p;
+  }
+
+  var BS_FIELDS = ['isCritical', 'percentComplete', 'level', 'duration', 'type', 'resourceId', 'constraintType', 'hasDeadline', 'milestone', 'summary', 'name', 'notes'];
+  var BS_OPS = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'isEmpty', 'isNotEmpty'];
+
+  function sanitizeBoxStyle(style) {
+    var s = {};
+    ['borderColor', 'fillColor', 'textColor', 'shadowColor'].forEach(function (k) {
+      if (typeof style[k] === 'string' && style[k]) s[k] = style[k];
+    });
+    if (style.borderWidth === 1 || style.borderWidth === 2 || style.borderWidth === 3) s.borderWidth = style.borderWidth;
+    if (style.borderDash === 'solid' || style.borderDash === 'dashed' || style.borderDash === 'dotted') s.borderDash = style.borderDash;
+    if (style.bold) s.bold = true;
+    ['shadowX', 'shadowY'].forEach(function (k) {
+      if (isFinite(+style[k])) s[k] = Math.max(-4, Math.min(4, Math.round(+style[k])));
+    });
+    return s;
+  }
+
+  function sanitizeBoxRule(r) {
+    var views = arr(r.views).filter(function (v) { return v === 'wbs' || v === 'network'; });
+    return {
+      id: str(r.id) || 'r' + Math.random().toString(36).slice(2, 8),
+      name: str(r.name) || 'Rule',
+      enabled: r.enabled == null ? true : !!r.enabled,
+      builtin: !!r.builtin,
+      scope: r.scope === 'full' ? 'full' : 'partial',
+      views: views.length ? views : ['wbs', 'network'],
+      conditions: arr(r.conditions).filter(isObj).slice(0, 10).map(function (c) {
+        return { field: str(c.field), op: str(c.op), value: c.value };
+      }).filter(function (c) { return BS_FIELDS.indexOf(c.field) >= 0 && BS_OPS.indexOf(c.op) >= 0; }),
+      style: sanitizeBoxStyle(isObj(r.style) ? r.style : {})
+    };
   }
 
   function isObj(o) { return o != null && typeof o === 'object' && !Array.isArray(o); }
@@ -307,6 +471,20 @@ OP.model = (function () {
     uids.forEach(function (u) { set[u] = true; });
     p.tasks = p.tasks.filter(function (t) { return !set[t.uid]; });
     p.tasks.forEach(function (t) { t.preds = t.preds.filter(function (l) { return !set[l.uid]; }); });
+    // Drop manual network positions, edge overrides and bound text boxes that referenced the removed tasks.
+    if (isObj(p.netPos)) Object.keys(p.netPos).forEach(function (k) { if (set[k]) delete p.netPos[k]; });
+    if (isObj(p.netEdge)) Object.keys(p.netEdge).forEach(function (k) {
+      if (k.split('-').some(function (u) { return set[u]; })) delete p.netEdge[k];
+    });
+    if (arr(p.annotations).length) p.annotations = p.annotations.filter(function (a) {
+      if (!isObj(a)) return true;
+      if (a.mode === 'task' && set[a.taskUid]) return false;
+      if (a.mode === 'group') {
+        a.uids = arr(a.uids).filter(function (u) { return !set[u]; });
+        if (!a.uids.length) return false;
+      }
+      return true;
+    });
     normalizeLevels(p);
   }
 
@@ -357,7 +535,7 @@ OP.model = (function () {
 OP.schedule = function (p, opts) {
   var U = OP.util, M = OP.model;
   var tasks = p.tasks, n = tasks.length;
-  var cal = new OP.Calendar(U.parseDate(p.start) || U.todayDn(), p.holidays);
+  var cal = new OP.Calendar(U.parseDate(p.start) || U.todayDn(), p.calendar);
   var hpd = +p.hoursPerDay || 8;
   var idx = M.indexByUid(p);
   var resByUid = {};
@@ -464,7 +642,7 @@ OP.schedule = function (p, opts) {
       if (t.constraint === 'MSO' && (cd = startIdx(t.constraintDate)) != null) es = cd;
       if (t.constraint === 'MFO' && (cd = finishIdx(t.constraintDate)) != null) es = cd - sp;
     }
-    if (es < fromLinks - 1e-9) conflict[i] = 'The ' + M.CONSTRAINTS[t.constraint] + ' date is earlier than its predecessors allow';
+    if (es < fromLinks - 1e-9) conflict[i] = tr('The {c} date is earlier than its predecessors allow', { c: tr(M.CONSTRAINTS[t.constraint]) });
     es = Math.max(0, es) + (t.constraint === 'ALAP' ? 0 : +t.levelDelay || 0);
     if (t.actualStart && (cd = startIdx(t.actualStart)) != null) es = cd;
     ES[i] = es;
